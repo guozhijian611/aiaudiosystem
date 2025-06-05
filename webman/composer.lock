@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "c821c6d75123e9883409054fe2de966c",
+    "content-hash": "69d0a8e970ab1d9719dc68960245255c",
     "packages": [
         {
             "name": "brick/math",
@@ -2246,6 +2246,43 @@
                 "source": "https://github.com/saithink/saiadmin/tree/5.0.3"
             },
             "time": "2025-06-04T01:38:12+00:00"
+        },
+        {
+            "name": "saithink/thinkorm-log",
+            "version": "1.0.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/saithink/thinkorm-log.git",
+                "reference": "ec23d6af1c74db48ddd4be822db7557e62f1220f"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/saithink/thinkorm-log/zipball/ec23d6af1c74db48ddd4be822db7557e62f1220f",
+                "reference": "ec23d6af1c74db48ddd4be822db7557e62f1220f",
+                "shasum": ""
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "Saithink\\ThinkOrmLog\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "saithink",
+                    "email": "1430792918@qq.com"
+                }
+            ],
+            "description": "基于webman开发的ThinkOrm日志记录插件",
+            "support": {
+                "issues": "https://github.com/saithink/thinkorm-log/issues",
+                "source": "https://github.com/saithink/thinkorm-log/tree/1.0.1"
+            },
+            "time": "2024-10-18T01:35:13+00:00"
         },
         {
             "name": "symfony/cache",

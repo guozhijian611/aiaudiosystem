@@ -28,7 +28,8 @@
     "workerman/webman-framework": "^2.1",
     "monolog/monolog": "^2.0",
     "saithink/saiadmin": "^5.0",
-    "webman/console": "^2.1"
+    "webman/console": "^2.1",
+    "saithink/thinkorm-log": "^1.0"
   },
   "suggest": {
     "ext-event": "For better performance. "
