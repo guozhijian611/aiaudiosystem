@@ -16,6 +16,7 @@ use Webman\Route;
 
 use app\controller\UserController;
 use app\controller\AdminController;
+use app\controller\TaskController;
 
 Route::group('/user', function () {
     Route::post('/login', [UserController::class, 'login']);
@@ -30,6 +31,12 @@ Route::group('/admin', function () {
     Route::post('/updateUserStatus', [AdminController::class, 'updateUserStatus']);
 });
 
+Route::group('/task', function () {
+    Route::post('/createTask', [TaskController::class, 'createTask']);
+    Route::post('/taskList', [TaskController::class, 'taskList']);
+    Route::post('/deleteTask', [TaskController::class, 'deleteTask']);
+    Route::post('/updateTask', [TaskController::class, 'updateTask']);
+});
 
 //拦截 404
 Route::fallback(function(){

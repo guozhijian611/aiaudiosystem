@@ -141,17 +141,21 @@ class AdminController
             $query->order($order_field, $order_type);
             
             // 分页查询
-            $userList = $query->paginate([
+            $result = $query->paginate([
                 'list_rows' => $limit,
                 'page' => $page
             ]);
             
+            $currentPage = $result->currentPage();
+            $lastPage = $result->lastPage();
+            
             return jsons(200, '获取成功', [
-                'list' => $userList->items(),
-                'total' => $userList->total(),
-                'page' => $page,
-                'limit' => $limit,
-                'pages' => $userList->lastPage(),
+                'list' => $result->items(),
+                'total' => $result->total(),
+                'current_page' => $currentPage,
+                'per_page' => $result->listRows(),
+                'last_page' => $lastPage,
+                'has_more' => $currentPage < $lastPage,
                 'search_params' => [
                     'search' => $search,
                     'role' => $role,
