@@ -17,7 +17,7 @@ use Webman\Route;
 use app\controller\UserController;
 use app\controller\AdminController;
 use app\controller\TaskController;
-
+use app\controller\TaskInfoController;
 Route::group('/user', function () {
     Route::post('/login', [UserController::class, 'login']);
     Route::post('/register', [UserController::class, 'register']);
@@ -37,6 +37,7 @@ Route::group('/task', function () {
     Route::post('/deleteTask', [TaskController::class, 'deleteTask']);
     Route::post('/updateTask', [TaskController::class, 'updateTask']);
     Route::post('/upload', [TaskController::class, 'upload']);
+    Route::post('/getTaskInfo', [TaskInfoController::class, 'getTaskInfo']);
 });
 
 //拦截 404
