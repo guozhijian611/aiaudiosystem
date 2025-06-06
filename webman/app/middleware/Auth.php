@@ -29,7 +29,7 @@ class Auth implements MiddlewareInterface
             $request->user = $jwt['extend'];
             return $handler($request);
         } catch (\Exception $e) {
-            return json(['code' => 401, 'msg' => $e->getMessage()]);
+            return json(['code' => 401, 'msg' => $e->getMessage(), 'error' => 'Auth failed']);
         }
     }
 }

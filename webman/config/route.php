@@ -36,6 +36,7 @@ Route::group('/task', function () {
     Route::post('/taskList', [TaskController::class, 'taskList']);
     Route::post('/deleteTask', [TaskController::class, 'deleteTask']);
     Route::post('/updateTask', [TaskController::class, 'updateTask']);
+    Route::post('/upload', [TaskController::class, 'upload']);
 });
 
 //拦截 404
