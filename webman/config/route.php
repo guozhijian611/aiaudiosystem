@@ -14,8 +14,24 @@
 
 use Webman\Route;
 
+use app\controller\UserController;
+use app\controller\AdminController;
+
+Route::group('/user', function () {
+    Route::post('/login', [UserController::class, 'login']);
+    Route::post('/register', [UserController::class, 'register']);
+    Route::post('/logout', [UserController::class, 'logout']);
+    Route::post('/updatePassword', [UserController::class, 'updatePassword']);
+    Route::post('/updateUserInfo', [UserController::class, 'updateUserInfo']);
+    Route::post('/getUserInfo', [UserController::class, 'getUserInfo']);
+});
+
+Route::group('/admin', function () {
+    Route::post('/updateUserStatus', [AdminController::class, 'updateUserStatus']);
+});
 
 
-
-
-
+//拦截 404
+Route::fallback(function(){
+    return jsons(404, 'Route Not Found');
+});
