@@ -16,7 +16,6 @@ class Auth implements MiddlewareInterface
             '/',
             '/test',
             '/user/login',
-            '/user/register',
             '/user/logout',
         ];
         // 如果是白名单内的路由，直接放行

@@ -12,11 +12,12 @@
  * @license   http://www.opensource.org/licenses/mit-license.php MIT License
  */
 
- use plugin\saiadmin\app\middleware\CrossDomain;
+ use app\middleware\Cross;
 
 return [
     '' => [
+        Cross::class,
         app\middleware\Auth::class,
-        CrossDomain::class,
+       
     ],
 ];

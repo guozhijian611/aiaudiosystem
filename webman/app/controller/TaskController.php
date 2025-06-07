@@ -6,11 +6,10 @@ use support\Request;
 use support\Response;
 use app\api\model\Task;
 use app\api\model\TaskInfo;
-use plugin\saiadmin\basic\BaseController;
 use plugin\saiadmin\app\logic\system\SystemAttachmentLogic;
 use Exception;
 
-class TaskController extends BaseController
+class TaskController
 {
     /**
      * 创建任务

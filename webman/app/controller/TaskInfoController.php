@@ -4,6 +4,7 @@ namespace app\controller;
 
 use support\Request;
 use app\api\model\TaskInfo;
+use app\api\model\Task;
 class TaskInfoController
 {
    /**
