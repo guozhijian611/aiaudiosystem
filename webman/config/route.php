@@ -18,6 +18,17 @@ use app\controller\UserController;
 use app\controller\AdminController;
 use app\controller\TaskController;
 use app\controller\TaskInfoController;
+Route::fallback(function() {
+    $response = request()->method() == 'OPTIONS' ? response('') : json(['code' => 400, 'message' => '异常请求']);
+    $response->withHeaders([
+        'Access-Control-Allow-Credentials' => 'true',
+        'Access-Control-Allow-Origin' => request()->header('origin', '*'),
+        'Access-Control-Allow-Methods' => request()->header('access-control-request-method', '*'),
+        'Access-Control-Allow-Headers' => request()->header('access-control-request-headers', '*'),
+    ]);
+    return $response;
+});
+
 Route::group('/user', function () {
     Route::post('/login', [UserController::class, 'login']);
     Route::post('/register', [UserController::class, 'register']);

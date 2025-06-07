@@ -156,10 +156,10 @@ class TaskController extends BaseController
         // 检查任务状态是否允许上传文件  
         if ($task->status == 3) return jsons(400, '任务已转写完成，无法上传文件');
         if ($task->status == 4) return jsons(400, '任务处理中，无法上传文件');
-        if ($task->status == 5) return jsons(400, '任务已暂停，无法上传文件');
+        if ($task->status == 2) return jsons(400, '任务已检测，无法上传文件');
 
-        // 只有空任务(1)和已检测(2)状态可以上传文件  
-        if (!in_array($task->status, [1, 2])) return jsons(400, '当前任务状态不允许上传文件');
+        // 只有空任务(1)和暂停中(5)状态可以上传文件  
+        if (!in_array($task->status, [1, 5])) return jsons(400, '当前任务状态不允许上传文件');
 
         try {
             // 处理多字段文件上传，比如file,file2,file3
@@ -227,6 +227,9 @@ class TaskController extends BaseController
                     return jsons(400, "文件字段 {$fieldName} 上传失败：" . $e->getMessage());
                 }
             }
+            //更新任务状态为暂停中(5)，表示有文件上传
+            $task->status = 5;
+            $task->save();
             
             return jsons(200, '文件上传成功', [
                 'total_files' => count($uploadResults),
