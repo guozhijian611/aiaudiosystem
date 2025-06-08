@@ -776,4 +776,232 @@ class QueueController
 
         return in_array($taskInfo->step, $processingSteps);
     }
+
+    /**
+     * 上传接口，用于节点处理成功后的文件上传，参考 TaskController 的 upload 接口，但是不存 taskinfo 表
+     * 
+     * 设计思路：职责分离
+     * 1. 此接口只负责文件上传，验证文件并保存到服务器
+     * 2. 返回文件URL等信息给节点
+     * 3. 节点拿到文件信息后，调用 handleTaskCallback 接口进行业务处理
+     * 
+     * @param Request $request 请求对象，需要包含：
+     *   - file: 上传的文件（必需）
+     *   - task_type: 任务类型，用于文件验证（可选）
+     * @return array JSON响应
+     *   成功：{'code': 200, 'msg': '上传成功', 'data': {'url': '文件URL', 'filename': '原始文件名', ...}}
+     *   失败：{'code': 400, 'msg': '错误信息', 'data': null}
+     * 
+     * @throws Exception 文件上传失败时抛出异常
+     * @since 1.0.0
+     * @author 系统管理员
+     * 
+     * @example
+     * // 节点调用示例：
+     * // 1. 先调用upload接口上传文件
+     * // POST /queue/upload
+     * // Content-Type: multipart/form-data
+     * // file: [文件数据]
+     * // task_type: 1 (可选，用于文件类型验证)
+     * //
+     * // 2. 获取到文件信息后，再调用回调接口
+     * // POST /queue/callback
+     * // {
+     * //     "task_id": 123,
+     * //     "task_type": 1,
+     * //     "status": "success",
+     * //     "data": {"voice_url": "上一步返回的URL"}
+     * // }
+     */
+    public function upload(Request $request)
+    {
+        try {
+            // 检查文件是否上传
+            $files = $request->file();
+            if (empty($files)) {
+                return jsons(400, '请选择要上传的文件');
+            }
+            
+            // 获取任务类型（可选参数，用于文件类型验证）
+            $taskType = $request->post('task_type');
+            
+            // 只处理第一个文件（节点通常一次只上传一个处理结果文件）
+            $file = reset($files);
+            $fieldName = key($files);
+            
+            // 上传文件
+            $result = $this->uploadFileForQueue($file, $taskType);
+            
+            return jsons(200, '文件上传成功', [
+                'field_name' => $fieldName,
+                'file_info' => $result
+            ]);
+            
+        } catch (\Exception $e) {
+            return jsons(400, '文件上传失败：' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * 队列专用文件上传方法
+     * 
+     * 与TaskController的uploadFileByField方法类似，但专门为队列节点设计：
+     * 1. 支持队列处理结果文件的格式验证
+     * 2. 不操作数据库，只返回文件信息
+     * 3. 针对不同任务类型进行文件格式验证
+     * 
+     * @param mixed $file 上传的文件对象
+     * @param int|null $taskType 任务类型，用于文件验证
+     *   - QueueConstants::TASK_TYPE_EXTRACT: 音频提取（支持音频格式）
+     *   - QueueConstants::TASK_TYPE_CONVERT: 音频降噪（支持音频格式）
+     *   - QueueConstants::TASK_TYPE_FAST_RECOGNITION: 快速识别（支持文本格式）
+     *   - QueueConstants::TASK_TYPE_TEXT_CONVERT: 文本转写（支持文本格式）
+     * @return array 文件信息数组
+     *   - storage_mode: 存储模式
+     *   - origin_name: 原始文件名
+     *   - object_name: 服务器文件名
+     *   - hash: 文件哈希值
+     *   - mime_type: MIME类型
+     *   - storage_path: 存储路径
+     *   - suffix: 文件扩展名
+     *   - size_byte: 文件大小（字节）
+     *   - size_info: 格式化的文件大小
+     *   - url: 访问URL
+     * 
+     * @throws Exception 文件上传失败时抛出异常
+     */
+    private function uploadFileForQueue($file, $taskType = null)
+    {
+        // 获取上传配置
+        $configLogic = new \plugin\saiadmin\app\logic\system\SystemConfigLogic();
+        $uploadConfig = $configLogic->getGroup('upload_config');
+        
+        // 检查文件大小
+        $file_size = $file->getSize();
+        $maxSize = \plugin\saiadmin\utils\Arr::getConfigValue($uploadConfig, 'upload_size') ?? 104857600; // 默认100MB
+        if ($file_size > $maxSize) {
+            throw new \Exception('文件大小超过限制');
+        }
+        
+        // 获取文件扩展名
+        $ext = $file->getUploadExtension();
+        
+        // 根据任务类型验证文件格式
+        $this->validateFileForTaskType($ext, $taskType);
+        
+        // 生成文件保存路径（使用queue子目录区分）
+        $root = \plugin\saiadmin\utils\Arr::getConfigValue($uploadConfig, 'local_root') ?? 'public/storage/';
+        $folder = 'queue/' . date('Ymd'); // 队列文件单独存放
+        $fullDir = base_path() . DIRECTORY_SEPARATOR . $root . $folder . DIRECTORY_SEPARATOR;
+        
+        if (!is_dir($fullDir)) {
+            mkdir($fullDir, 0777, true);
+        }
+        
+        // 生成唯一文件名
+        $hash = hash_file('sha1', $file->getRealPath());
+        $objectName = $hash . '.' . $ext;
+        $savePath = $fullDir . $objectName;
+        
+        // 移动文件
+        $file->move($savePath);
+        
+        // 生成URL
+        $domain = \plugin\saiadmin\utils\Arr::getConfigValue($uploadConfig, 'local_domain') ?? request()->host();
+        $uri = \plugin\saiadmin\utils\Arr::getConfigValue($uploadConfig, 'local_uri') ?? '/storage/';
+        $url = $domain . $uri . $folder . '/' . $objectName;
+        
+        // 构建返回数据
+        $result = [
+            'storage_mode' => 1,
+            'origin_name' => $file->getUploadName(),
+            'object_name' => $objectName,
+            'hash' => $hash,
+            'mime_type' => $file->getUploadMimeType(),
+            'storage_path' => $root . $folder . '/' . $objectName,
+            'suffix' => $ext,
+            'size_byte' => $file_size,
+            'size_info' => $this->formatBytes($file_size),
+            'url' => $url
+        ];
+        
+        // 保存到系统附件表（记录文件信息，便于管理）
+        $attachment = new \plugin\saiadmin\app\model\system\SystemAttachment();
+        $attachment->save($result);
+        
+        return $result;
+    }
+    
+    /**
+     * 根据任务类型验证文件格式
+     * 
+     * @param string $ext 文件扩展名
+     * @param int|null $taskType 任务类型
+     * @throws Exception 文件格式不符合要求时抛出异常
+     */
+    private function validateFileForTaskType($ext, $taskType)
+    {
+        // 如果没有指定任务类型，使用默认验证
+        if ($taskType === null) {
+            $allowedExtensions = ['mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a', 'txt', 'json'];
+            if (!in_array($ext, $allowedExtensions)) {
+                throw new \Exception('不支持该格式的文件上传，支持的格式：' . implode(', ', $allowedExtensions));
+            }
+            return;
+        }
+        
+        // 根据任务类型验证文件格式
+        switch ($taskType) {
+            case QueueConstants::TASK_TYPE_EXTRACT:
+                // 音频提取结果：音频文件
+                $audioExtensions = ['mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a', 'opus'];
+                if (!in_array($ext, $audioExtensions)) {
+                    throw new \Exception('音频提取任务只支持音频文件格式：' . implode(', ', $audioExtensions));
+                }
+                break;
+                
+            case QueueConstants::TASK_TYPE_CONVERT:
+                // 音频降噪结果：音频文件
+                $audioExtensions = ['mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a', 'opus'];
+                if (!in_array($ext, $audioExtensions)) {
+                    throw new \Exception('音频降噪任务只支持音频文件格式：' . implode(', ', $audioExtensions));
+                }
+                break;
+                
+            case QueueConstants::TASK_TYPE_FAST_RECOGNITION:
+                // 快速识别结果：文本文件
+                $textExtensions = ['txt', 'json'];
+                if (!in_array($ext, $textExtensions)) {
+                    throw new \Exception('快速识别任务只支持文本文件格式：' . implode(', ', $textExtensions));
+                }
+                break;
+                
+            case QueueConstants::TASK_TYPE_TEXT_CONVERT:
+                // 文本转写结果：文本文件
+                $textExtensions = ['txt', 'json'];
+                if (!in_array($ext, $textExtensions)) {
+                    throw new \Exception('文本转写任务只支持文本文件格式：' . implode(', ', $textExtensions));
+                }
+                break;
+                
+            default:
+                throw new \Exception('未知的任务类型：' . $taskType);
+        }
+    }
+    
+    /**
+     * 格式化文件大小
+     * 
+     * @param int $bytes 字节数
+     * @return string 格式化后的文件大小
+     */
+    private function formatBytes($bytes)
+    {
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        $bytes = max($bytes, 0);
+        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow = min($pow, count($units) - 1);
+        $bytes /= (1 << (10 * $pow));
+        return round($bytes, 2) . ' ' . $units[$pow];
+    }
 }

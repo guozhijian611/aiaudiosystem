@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  cut_node:
+    build: .
+    container_name: cut_node
+    restart: unless-stopped
+    environment:
+      # RabbitMQ配置
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USERNAME=guest
+      - RABBITMQ_PASSWORD=guest
+      - RABBITMQ_VIRTUAL_HOST=/
+      
+      # 队列名称
+      - QUEUE_NAME=voice_extract_queue
+      
+      # 后端API配置
+      - API_BASE_URL=http://host.docker.internal:8787
+      - API_UPLOAD_ENDPOINT=/queue/upload
+      - API_CALLBACK_ENDPOINT=/queue/callback
+      
+      # 工作目录配置
+      - WORK_DIR=/app/work
+      - TEMP_DIR=/app/temp
+      - LOG_LEVEL=INFO
+      
+      # FFmpeg配置
+      - FFMPEG_THREADS=4
+      - AUDIO_FORMAT=mp3
+      - AUDIO_BITRATE=128k
+      - AUDIO_SAMPLE_RATE=44100
+    
+    volumes:
+      - cut_node_work:/app/work
+      - cut_node_temp:/app/temp
+      - cut_node_logs:/app/logs
+    
+    depends_on:
+      - rabbitmq
+    
+    networks:
+      - audio_network
+
+  # RabbitMQ 服务（可选，如果已有外部RabbitMQ可以移除）
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"  # 管理界面
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - audio_network
+
+volumes:
+  cut_node_work:
+  cut_node_temp:
+  cut_node_logs:
+  rabbitmq_data:
+
+networks:
+  audio_network:
+    driver: bridge 
