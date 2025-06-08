@@ -208,7 +208,7 @@ class TaskController
                         'size' => $result['size_info'] ?? '',
                         'type' => $fileType, // 根据文件类型设置：1-语音 2-视频
                         'url' => $result['url'] ?? '',
-                        'is_extract' => 2, // 默认未提取
+                        'is_extract' =>$fileType, // 根据文件类型设置：1-语音 2-视频 默认未提取2，是视频没有提取
                         'is_clear' => 2, // 默认未清理
                         'fast_status' => 2, // 默认状态
                         'transcribe_status' => 2, // 默认转写状态

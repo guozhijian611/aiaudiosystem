@@ -1,16 +1,9 @@
 <?php
-// +----------------------------------------------------------------------
-// | saiadmin [ saiadmin快速开发框架 ]
-// +----------------------------------------------------------------------
-// | Author: your name
-// +----------------------------------------------------------------------
-namespace app\api\model;
 
-use plugin\saiadmin\basic\BaseModel;
+namespace app\model;
 
-/**
- * 任务详情模型
- */
+use support\think\Model;
+
 /**
  * ai_task_info 
  * @property integer $id ID(主键)
@@ -36,33 +29,28 @@ use plugin\saiadmin\basic\BaseModel;
  * @property string $update_time 更新时间
  * @property string $delete_time 删除时间
  */
-class TaskInfo extends BaseModel
+class TaskInfo extends Model
 {
     /**
-     * 数据表主键
-     * @var string
+     * The connection name for the model.
+     *
+     * @var string|null
      */
-    protected $pk = 'id';
-
+    protected $connection = 'mysql';
+    
     /**
-     * 数据库表名称
+     * The table associated with the model.
+     *
      * @var string
      */
     protected $table = 'ai_task_info';
 
     /**
-     * 原始文件名 搜索
+     * The primary key associated with the table.
+     *
+     * @var string
      */
-    public function searchFilenameAttr($query, $value)
-    {
-        $query->where('filename', 'like', '%'.$value.'%');
-    }
+    protected $pk = 'id';
 
-    /**
-     * 关联任务表
-     */
-    public function task()
-    {
-        return $this->belongsTo(Task::class, 'tid', 'id');
-    }
+    
 }

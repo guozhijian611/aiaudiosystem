@@ -13,11 +13,12 @@
  */
 
 use Webman\Route;
-
+use app\controller\QueueController;
 use app\controller\UserController;
 use app\controller\AdminController;
 use app\controller\TaskController;
 use app\controller\TaskInfoController;
+
 Route::options('/{path:.+}', function ($request, $path) {
     return response('');
 });
@@ -43,6 +44,10 @@ Route::group('/task', function () {
     Route::post('/updateTask', [TaskController::class, 'updateTask']);
     Route::post('/upload', [TaskController::class, 'upload']);
     Route::post('/getTaskInfo', [TaskInfoController::class, 'getTaskInfo']);
+});
+
+Route::group('/test', function () {
+    Route::post('/test', [QueueController::class, 'test']);
 });
 
 //拦截 404
