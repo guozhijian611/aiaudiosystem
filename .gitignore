@@ -20,6 +20,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+conda
+.conda
 
 # Python虚拟环境
 cut_node/venv/

@@ -1,0 +1,6 @@
+[submodule "clear_node/ClearerVoice-Studio"]
+	path = clear_node/ClearerVoice-Studio
+	url = https://github.com/modelscope/ClearerVoice-Studio.git
+[submodule "translate_node/whisperX"]
+	path = translate_node/whisperX
+	url = https://github.com/m-bain/whisperX.git
