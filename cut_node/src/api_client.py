@@ -5,6 +5,7 @@ API客户端模块
 
 import requests
 import os
+import mimetypes
 from typing import Dict, Any
 from config import Config
 from logger import logger
@@ -17,6 +18,76 @@ class APIClient:
         self.session = requests.Session()
         # 设置请求超时
         self.session.timeout = 300  # 5分钟
+        
+        # 初始化mimetypes
+        mimetypes.init()
+        # 添加一些常见的音频和视频格式
+        mimetypes.add_type('audio/mp3', '.mp3')
+        mimetypes.add_type('audio/mpeg', '.mp3')
+        mimetypes.add_type('audio/wav', '.wav')
+        mimetypes.add_type('audio/x-wav', '.wav')
+        mimetypes.add_type('audio/mp4', '.m4a')
+        mimetypes.add_type('video/mp4', '.mp4')
+        mimetypes.add_type('video/avi', '.avi')
+        mimetypes.add_type('video/mov', '.mov')
+        mimetypes.add_type('video/wmv', '.wmv')
+        mimetypes.add_type('video/flv', '.flv')
+        mimetypes.add_type('video/webm', '.webm')
+    
+    def _get_file_mime_type(self, file_path: str) -> str:
+        """
+        获取文件的MIME类型
+        
+        Args:
+            file_path (str): 文件路径
+            
+        Returns:
+            str: MIME类型
+        """
+        # 根据文件扩展名猜测MIME类型
+        mime_type, _ = mimetypes.guess_type(file_path)
+        
+        if mime_type:
+            logger.info(f"检测到文件MIME类型: {file_path} -> {mime_type}")
+            return mime_type
+        
+        # 如果无法检测，尝试根据扩展名手动识别
+        ext = os.path.splitext(file_path)[1].lower()
+        
+        # 音频文件扩展名映射
+        audio_types = {
+            '.mp3': 'audio/mpeg',
+            '.wav': 'audio/wav',
+            '.m4a': 'audio/mp4',
+            '.aac': 'audio/aac',
+            '.ogg': 'audio/ogg',
+            '.flac': 'audio/flac',
+            '.wma': 'audio/x-ms-wma'
+        }
+        
+        # 视频文件扩展名映射
+        video_types = {
+            '.mp4': 'video/mp4',
+            '.avi': 'video/x-msvideo',
+            '.mov': 'video/quicktime',
+            '.wmv': 'video/x-ms-wmv',
+            '.flv': 'video/x-flv',
+            '.webm': 'video/webm',
+            '.mkv': 'video/x-matroska'
+        }
+        
+        if ext in audio_types:
+            mime_type = audio_types[ext]
+            logger.info(f"手动识别音频文件: {file_path} -> {mime_type}")
+            return mime_type
+        elif ext in video_types:
+            mime_type = video_types[ext]
+            logger.info(f"手动识别视频文件: {file_path} -> {mime_type}")
+            return mime_type
+        
+        # 默认返回通用二进制类型
+        logger.warning(f"无法识别文件类型，使用默认: {file_path} -> application/octet-stream")
+        return 'application/octet-stream'
         
     def upload_file(self, file_path: str, task_type: int = 1) -> Dict[str, Any]:
         """
@@ -36,9 +107,12 @@ class APIClient:
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"文件不存在: {file_path}")
             
+            # 检测文件MIME类型
+            mime_type = self._get_file_mime_type(file_path)
+            
             # 准备文件上传
             with open(file_path, 'rb') as f:
-                files = {'file': (os.path.basename(file_path), f, 'application/octet-stream')}
+                files = {'file': (os.path.basename(file_path), f, mime_type)}
                 data = {'task_type': task_type}
                 
                 logger.info(f"开始上传文件: {file_path} 到 {self.config.upload_url}")

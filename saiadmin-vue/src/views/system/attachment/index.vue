@@ -64,13 +64,16 @@
                         <a-tag :checked="checked" color="arcoblue" checkable><icon-check /> 选择</a-tag>
                       </template>
                     </a-checkbox>
+                    
+                    <!-- 图片文件 -->
                     <a-image
+                      v-if="isImage(record.mime_type)"
                       width="190"
                       height="190"
                       show-loader
                       :title="record.origin_name"
                       :description="`大小：${record.size_info}`"
-                      :src="/image/g.test(record.mime_type) ? tool.attachUrl(record.url) : $url + 'not-image.png'">
+                      :src="tool.attachUrl(record.url)">
                       <template #extra>
                         <div class="actions">
                           <a-tooltip content="下载此文件">
@@ -88,6 +91,106 @@
                         </div>
                       </template>
                     </a-image>
+                    
+                    <!-- 视频文件 -->
+                    <div v-else-if="isVideo(record.mime_type)" class="media-container">
+                      <video
+                        width="190"
+                        height="190"
+                        controls
+                        preload="metadata"
+                        :title="record.origin_name"
+                        style="object-fit: contain; background-color: var(--color-fill-4); border-radius: 2px;">
+                        <source :src="tool.attachUrl(record.url)" :type="record.mime_type">
+                        您的浏览器不支持视频播放
+                      </video>
+                      <div class="media-info">
+                        <div class="media-title">{{ record.origin_name }}</div>
+                        <div class="media-size">大小：{{ record.size_info }}</div>
+                      </div>
+                      <div class="actions">
+                        <a-tooltip content="播放视频">
+                          <span class="action" @click="playMedia(record)"><icon-play-arrow /></span>
+                        </a-tooltip>
+                        <a-tooltip content="下载此文件">
+                          <span class="action" @click="download(record)"><icon-download /></span>
+                        </a-tooltip>
+                        <a-tooltip>
+                          <span class="action"><icon-info-circle /></span>
+                          <template #content>
+                            <div>存储名称：{{ record.object_name }}</div>
+                            <div>存储目录：{{ record.storage_path }}</div>
+                            <div>上传时间：{{ record.create_time }}</div>
+                            <div>存储模式：{{ tool.getLabel(record.storage_mode, dictList['upload_mode']) }}</div>
+                          </template>
+                        </a-tooltip>
+                      </div>
+                    </div>
+                    
+                    <!-- 音频文件 -->
+                    <div v-else-if="isAudio(record.mime_type)" class="media-container">
+                      <div class="audio-preview">
+                        <div class="audio-icon">
+                          <icon-music style="font-size: 48px; color: var(--color-text-3)" />
+                        </div>
+                        <audio
+                          controls
+                          preload="metadata"
+                          style="width: 170px; margin-top: 10px;"
+                          :title="record.origin_name">
+                          <source :src="tool.attachUrl(record.url)" :type="record.mime_type">
+                          您的浏览器不支持音频播放
+                        </audio>
+                      </div>
+                      <div class="media-info">
+                        <div class="media-title">{{ record.origin_name }}</div>
+                        <div class="media-size">大小：{{ record.size_info }}</div>
+                      </div>
+                      <div class="actions">
+                        <a-tooltip content="播放音频">
+                          <span class="action" @click="playMedia(record)"><icon-play-arrow /></span>
+                        </a-tooltip>
+                        <a-tooltip content="下载此文件">
+                          <span class="action" @click="download(record)"><icon-download /></span>
+                        </a-tooltip>
+                        <a-tooltip>
+                          <span class="action"><icon-info-circle /></span>
+                          <template #content>
+                            <div>存储名称：{{ record.object_name }}</div>
+                            <div>存储目录：{{ record.storage_path }}</div>
+                            <div>上传时间：{{ record.create_time }}</div>
+                            <div>存储模式：{{ tool.getLabel(record.storage_mode, dictList['upload_mode']) }}</div>
+                          </template>
+                        </a-tooltip>
+                      </div>
+                    </div>
+                    
+                    <!-- 其他文件类型 -->
+                    <div v-else class="file-container">
+                      <div class="file-preview">
+                        <a-avatar shape="square" style="width: 64px; height: 64px; font-size: 20px;">
+                          {{ record.suffix || 'FILE' }}
+                        </a-avatar>
+                      </div>
+                      <div class="media-info">
+                        <div class="media-title">{{ record.origin_name }}</div>
+                        <div class="media-size">大小：{{ record.size_info }}</div>
+                      </div>
+                      <div class="actions">
+                        <a-tooltip content="下载此文件">
+                          <span class="action" @click="download(record)"><icon-download /></span>
+                        </a-tooltip>
+                        <a-tooltip>
+                          <span class="action"><icon-info-circle /></span>
+                          <template #content>
+                            <div>存储名称：{{ record.object_name }}</div>
+                            <div>存储目录：{{ record.storage_path }}</div>
+                            <div>上传时间：{{ record.create_time }}</div>
+                            <div>存储模式：{{ tool.getLabel(record.storage_mode, dictList['upload_mode']) }}</div>
+                          </template>
+                        </a-tooltip>
+                      </div>
+                    </div>
                   </div>
                 </template>
               </a-space>
@@ -96,16 +199,42 @@
         </template>
         <!-- 自定义table渲染 -->
         <template #url="{ record }">
+          <!-- 图片文件 -->
           <a-image
             class="list-image"
-            v-if="/image/g.test(record.mime_type)"
+            v-if="isImage(record.mime_type)"
             width="40px"
             height="40px"
             :src="tool.attachUrl(record.url)" />
+          
+          <!-- 视频文件 -->
+          <div v-else-if="isVideo(record.mime_type)" class="list-video-container">
+            <video
+              width="40px"
+              height="40px"
+              :src="tool.attachUrl(record.url)"
+              style="object-fit: cover; border-radius: 2px; cursor: pointer;"
+              @click="$event.target.play()"
+              @mouseenter="$event.target.controls = true"
+              @mouseleave="$event.target.controls = false">
+            </video>
+          </div>
+          
+          <!-- 音频文件 -->
+          <div v-else-if="isAudio(record.mime_type)" class="list-audio-container">
+            <a-avatar shape="square" style="top: 0px; background-color: var(--color-primary-light-1);">
+              <icon-music />
+            </a-avatar>
+          </div>
+          
+          <!-- 其他文件 -->
           <a-avatar v-else shape="square" style="top: 0px">{{ record.suffix }}</a-avatar>
         </template>
         <!-- 操作列前置扩展 -->
         <template #operationBeforeExtend="{ record }">
+          <a-link v-if="isVideo(record.mime_type) || isAudio(record.mime_type)" @click="playMedia(record)">
+            <icon-play-arrow /> 播放
+          </a-link>
           <a-link @click="download(record)"><icon-download /> 下载</a-link>
         </template>
       </sa-table>
@@ -114,7 +243,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, computed, nextTick } from 'vue'
+import { ref, onMounted, reactive, computed, nextTick, h } from 'vue'
 import api from '@/api/system/attachment'
 import commonApi from '@/api/common'
 import { Message, Modal } from '@arco-design/web-vue'
@@ -128,6 +257,11 @@ const mode = ref('list')
 const defaultKey = ref(['all'])
 const sliderData = ref([])
 const selecteds = ref([])
+
+// 文件类型检测
+const isImage = (mimeType) => /^image\//i.test(mimeType)
+const isVideo = (mimeType) => /^video\//i.test(mimeType)
+const isAudio = (mimeType) => /^audio\//i.test(mimeType)
 
 // 分类搜索点击
 const handlerClick = async (value) => {
@@ -169,6 +303,42 @@ const selectAll = () => {
 const flushAll = () => {
   selecteds.value = []
   crudRef.value.clearSelected()
+}
+
+// 播放媒体文件
+const playMedia = (record) => {
+  if (isVideo(record.mime_type)) {
+    // 为视频创建播放弹窗
+    Modal.info({
+      title: '视频播放 - ' + record.origin_name,
+      content: () => h('video', {
+        src: tool.attachUrl(record.url),
+        controls: true,
+        autoplay: true,
+        style: 'width: 100%; max-height: 400px;'
+      }),
+      width: 600,
+      footer: false,
+    })
+  } else if (isAudio(record.mime_type)) {
+    // 为音频创建播放弹窗
+    Modal.info({
+      title: '音频播放 - ' + record.origin_name,
+      content: () => h('div', { style: 'text-align: center; padding: 20px;' }, [
+        h('div', { style: 'margin-bottom: 20px;' }, [
+          h('icon-music', { style: 'font-size: 64px; color: var(--color-primary);' })
+        ]),
+        h('audio', {
+          src: tool.attachUrl(record.url),
+          controls: true,
+          autoplay: true,
+          style: 'width: 100%;'
+        })
+      ]),
+      width: 500,
+      footer: false,
+    })
+  }
 }
 
 // 搜索表单
@@ -279,5 +449,88 @@ export default { name: 'system:attachment' }
 
 .action:hover {
   background: rgba(0, 0, 0, 0.5);
+}
+
+/* 媒体容器样式 */
+.media-container {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  border-radius: 2px;
+  overflow: hidden;
+  background-color: var(--color-fill-4);
+}
+
+.media-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+  color: white;
+  font-size: 12px;
+}
+
+.media-title {
+  font-weight: 500;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-size {
+  opacity: 0.8;
+}
+
+/* 音频预览样式 */
+.audio-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 150px;
+  background-color: var(--color-fill-2);
+}
+
+.audio-icon {
+  margin-bottom: 10px;
+}
+
+/* 文件容器样式 */
+.file-container {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  border-radius: 2px;
+  overflow: hidden;
+  background-color: var(--color-fill-4);
+}
+
+.file-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 150px;
+  background-color: var(--color-fill-2);
+}
+
+/* 列表模式媒体样式 */
+.list-video-container {
+  position: relative;
+  display: inline-block;
+}
+
+.list-video-container video {
+  transition: all 0.2s ease;
+}
+
+.list-video-container:hover video {
+  transform: scale(1.1);
+}
+
+.list-audio-container {
+  display: inline-block;
 }
 </style>
