@@ -2,6 +2,24 @@
 
 智能音频处理系统，支持语音提取、降噪、识别和转录。
 
+## 后端介绍
+本系统由以下后端服务组成
+- Webman 中台服务
+- Saiadmin-vue  中台前端
+- AiVoice 用户前端
+- Redis 缓存数据库
+- RabbitMQ 消息队列服务
+- MySQL84 数据库服务
+- MiniO S3文件存储服务【Option】
+- Cut_Node 音频切割节点
+- Clear_Node 音频降噪节点
+- Quick_Node 快速识别有效音频节点
+- Translate_Node 文字转写节点
+- Real_Node 实时语音转写节点【Dev】
+
+## 工作流
+1.文件上传->视频->提取音频->音频降噪->快速识别 (可选继续或跳过)->文字转写
+
 ## 快速启动
 
 ```bash
@@ -10,6 +28,7 @@ cd webman
 php -d memory_limit=512M start.php start
 
 # 启动Cut Node服务
+#python313
 cd cut_node
 source venv/bin/activate
 python src/main.py
