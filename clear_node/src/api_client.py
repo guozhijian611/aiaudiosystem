@@ -73,7 +73,7 @@ class APIClient:
     def send_callback(self, task_id: str = None, task_type: int = 2, status: str = '', 
                      message: str = '', data: Dict = None, 
                      # 兼容旧参数
-                     task_number: str = None, file_url: str = '', extra_data: Dict = None) -> Dict[str, Any]:
+                     task_number: str = None, file_url: str = '', extra_data: Dict = None) -> bool:
         """
         发送回调通知 - 支持新旧两种格式
         
@@ -90,7 +90,7 @@ class APIClient:
             extra_data (Dict): 额外数据
             
         Returns:
-            Dict[str, Any]: 回调结果
+            bool: 回调是否发送成功
         """
         try:
             # 优先使用新格式
@@ -133,19 +133,26 @@ class APIClient:
                 timeout=self.timeout
             )
             
-            # 检查响应
-            response.raise_for_status()
+            # 检查响应状态
+            if response.status_code != 200:
+                logger.error(f"回调HTTP错误: {response.status_code}, {response.text}")
+                return False
+            
+            # 解析响应
             result = response.json()
+            if result.get('code') != 200:
+                logger.error(f"回调业务错误: {result.get('msg', 'Unknown error')}")
+                return False
             
             logger.info(f"回调通知发送成功: {result}")
-            return result
+            return True
             
         except requests.exceptions.RequestException as e:
             logger.error(f"发送回调网络错误: {e}")
-            raise
+            return False
         except Exception as e:
             logger.error(f"发送回调失败: {e}")
-            raise
+            return False
     
     def download_file(self, file_url: str, local_path: str) -> bool:
         """

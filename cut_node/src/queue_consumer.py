@@ -124,12 +124,16 @@ class QueueConsumer:
             message = json.loads(body.decode('utf-8'))
             logger.info(f"接收到任务: {message}")
             
-            # 支持新旧两种消息格式获取task_id
+            # 获取task_info数据
             task_info = message.get('task_info', {})
-            task_id = task_info.get('id') if task_info else message.get('task_id')
             
+            if not task_info or not isinstance(task_info, dict):
+                raise ValueError("消息格式错误：缺少task_info字段或格式不正确")
+            
+            # 从task_info中获取task_id
+            task_id = task_info.get('id')
             if not task_id:
-                raise ValueError("消息中缺少task_id或task_info.id")
+                raise ValueError("task_info中缺少id字段")
             
             # 处理任务
             success = self._process_task(message)
@@ -157,13 +161,15 @@ class QueueConsumer:
             # 发送失败回调
             if task_id:
                 try:
-                    self.api_client.callback_failed(
+                    success = self.api_client.callback_failed(
                         task_id=task_id,
-                        task_type=1,  # 音频提取任务类型
+                        task_type=1,
                         message=str(e)
                     )
-                except:
-                    pass
+                    if not success:
+                        logger.error(f"任务 {task_id}: 失败回调发送失败")
+                except Exception as callback_error:
+                    logger.error(f"发送失败通知时出错: {callback_error}")
             
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
     
@@ -177,44 +183,28 @@ class QueueConsumer:
         Returns:
             bool: 处理是否成功
         """
-        # 支持新旧两种消息格式
+        # 获取task_info数据
         task_info = message.get('task_info', {})
-        task_id = task_info.get('id') if task_info else message.get('task_id')
+        task_id = task_info.get('id')
         
-        if not task_id:
-            logger.error("消息中缺少task_id或task_info.id")
-            return False
-        
-        # 智能识别URL字段 - 根据文件类型和处理阶段选择合适的URL
-        video_url = None
-        
-        if task_info:
-            # 新格式：从task_info中获取URL
-            # cut_node处理原始文件，优先使用url字段
-            video_url = task_info.get('url')  # 原始文件URL
-            
-            # 如果没有url字段，尝试其他字段（兼容性处理）
-            if not video_url:
-                video_url = task_info.get('voice_url') or task_info.get('task_url')
-                
-            logger.info(f"任务 {task_id}: 使用新格式消息，文件URL: {video_url}")
-            logger.info(f"任务 {task_id}: 文件信息 - 原始名称: {task_info.get('origin_name', 'N/A')}, "
-                       f"文件大小: {task_info.get('size_byte', 'N/A')} bytes, "
-                       f"是否已提取: {task_info.get('is_extract', 0)}")
-        else:
-            # 旧格式：兼容处理
-            video_url = message.get('video_url') or message.get('url') or message.get('task_url')
-            logger.info(f"任务 {task_id}: 使用旧格式消息，文件URL: {video_url}")
-        
+        # cut_node处理原始文件，使用url字段
+        video_url = task_info.get('url')
         if not video_url:
-            error_msg = "消息中缺少文件URL字段"
+            error_msg = "task_info中缺少url字段"
             logger.error(f"任务 {task_id}: {error_msg}")
-            self.api_client.callback_failed(
+            success = self.api_client.callback_failed(
                 task_id=task_id,
                 task_type=1,
                 message=error_msg
             )
+            if not success:
+                logger.error(f"任务 {task_id}: 失败回调发送失败")
             return False
+        
+        logger.info(f"任务 {task_id}: 处理原始文件URL: {video_url}")
+        logger.info(f"任务 {task_id}: 文件信息 - 原始名称: {task_info.get('filename', 'N/A')}, "
+                   f"文件大小: {task_info.get('size', 'N/A')}, "
+                   f"是否已提取: {task_info.get('is_extract', 0)}")
         
         # 根据文件扩展名判断是否需要音频提取
         file_extension = os.path.splitext(video_url.lower())[1]
@@ -311,11 +301,13 @@ class QueueConsumer:
             logger.error(traceback.format_exc())
             
             # 发送失败回调
-            self.api_client.callback_failed(
+            success = self.api_client.callback_failed(
                 task_id=task_id,
                 task_type=1,
                 message=str(e)
             )
+            if not success:
+                logger.error(f"任务 {task_id}: 失败回调发送失败")
             
             return False
             

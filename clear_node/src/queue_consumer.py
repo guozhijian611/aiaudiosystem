@@ -102,53 +102,32 @@ class QueueConsumer:
             message = body.decode('utf-8')
             task_data = json.loads(message)
             
-            # 支持新旧两种消息格式
+            # 获取task_info数据
             task_info = task_data.get('task_info', {})
             
-            if task_info:
-                # 新格式：从task_info中获取数据
-                task_id = task_info.get('id')
-                task_number = f"task_{task_id}"
-                
-                # clear_node使用voice_url（提取后的音频URL）
-                file_url = task_info.get('voice_url')
-                file_name = task_info.get('origin_name', f"audio_{task_id}.mp3")
-                
-                logger.info(f"任务 {task_id}: 使用新格式消息")
-                logger.info(f"任务 {task_id}: 音频URL: {file_url}")
-                logger.info(f"任务 {task_id}: 文件信息 - 原始名称: {task_info.get('origin_name', 'N/A')}, "
-                           f"文件大小: {task_info.get('size_byte', 'N/A')} bytes, "
-                           f"是否已提取: {task_info.get('is_extract', 0)}, "
-                           f"是否已降噪: {task_info.get('is_clear', 0)}")
-                
-                # 验证必要字段
-                if not task_id:
-                    raise ValueError("task_info中缺少id字段")
-                if not file_url:
-                    raise ValueError("task_info中缺少voice_url字段")
-                    
-            else:
-                # 旧格式：兼容处理
-                task_number = task_data.get('task_number')
-                file_url = task_data.get('file_url')
-                file_name = task_data.get('file_name')
-                
-                # 从task_number中提取task_id（如果格式为task_123）
-                if task_number and task_number.startswith('task_'):
-                    task_id = task_number.replace('task_', '')
-                else:
-                    task_id = task_number
-                
-                logger.info(f"任务 {task_id}: 使用旧格式消息")
-                
-                # 验证必要字段
-                required_fields = ['task_number', 'file_url', 'file_name']
-                for field in required_fields:
-                    if field not in task_data:
-                        raise ValueError(f"缺少必要字段: {field}")
+            if not task_info or not isinstance(task_info, dict):
+                raise ValueError("消息格式错误：缺少task_info字段或格式不正确")
+            
+            # 从task_info中获取数据
+            task_id = task_info.get('id')
+            if not task_id:
+                raise ValueError("task_info中缺少id字段")
+            
+            task_number = f"task_{task_id}"
+            
+            # clear_node使用voice_url（提取后的音频URL）
+            file_url = task_info.get('voice_url')
+            if not file_url:
+                raise ValueError("task_info中缺少voice_url字段")
+            
+            file_name = task_info.get('filename', f"audio_{task_id}.mp3")
             
             logger.info(f"任务 {task_id}: 收到音频降噪任务")
-            logger.info(f"任务 {task_id}: 处理文件: {file_name}")
+            logger.info(f"任务 {task_id}: 音频URL: {file_url}")
+            logger.info(f"任务 {task_id}: 文件信息 - 原始名称: {task_info.get('filename', 'N/A')}, "
+                       f"文件大小: {task_info.get('size', 'N/A')}, "
+                       f"是否已提取: {task_info.get('is_extract', 0)}, "
+                       f"是否已降噪: {task_info.get('is_clear', 0)}")
             
             # 发送开始处理通知
             self.api_client.send_callback(
@@ -202,14 +181,16 @@ class QueueConsumer:
             # 发送失败通知
             if task_id:
                 try:
-                    self.api_client.send_callback(
+                    success = self.api_client.send_callback(
                         task_id=task_id,
                         task_type=2,  # 音频降噪任务类型
                         status='failed',
                         message=f'音频降噪处理失败: {str(e)}'
                     )
-                except:
-                    logger.error("发送失败通知时出错")
+                    if not success:
+                        logger.error("失败回调发送失败")
+                except Exception as callback_error:
+                    logger.error(f"发送失败通知时出错: {callback_error}")
             
             # 拒绝消息，不重新入队
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
