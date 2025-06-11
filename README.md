@@ -2,6 +2,24 @@
 
 智能音频处理系统，支持语音提取、降噪、识别和转录。
 
+## 子模块地址
+```bash
+#用户前端
+https://github.com/linchunyan123/newAIvoice
+
+#clear_nod依赖 ClearVoiceStudio
+https://github.com/modelscope/ClearerVoice-Studio
+
+#translate_node依赖whisperx
+https://github.com/m-bain/whisperX
+
+#quick_node依赖FunASR -VAD
+https://github.com/modelscope/FunASR/tree/main
+
+#real_node依赖FunASR
+https://github.com/modelscope/FunASR/tree/main
+
+```
 ## 后端介绍
 本系统由以下后端服务组成
 - Webman 中台服务
