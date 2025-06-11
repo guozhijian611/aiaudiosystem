@@ -13,6 +13,7 @@ from config import Config
 from logger import logger
 from audio_cleaner import AudioCleaner
 from api_client import APIClient
+import urllib.parse
 
 class QueueConsumer:
     """队列消费者"""
@@ -120,11 +121,22 @@ class QueueConsumer:
             if not file_url:
                 raise ValueError("task_info中缺少voice_url字段")
             
-            file_name = task_info.get('filename', f"audio_{task_id}.mp3")
+            # 根据voice_url确定正确的文件名和扩展名
+            parsed_url = urllib.parse.urlparse(file_url)
+            url_filename = os.path.basename(parsed_url.path)
+            
+            # 如果URL中有文件名，使用URL中的文件名；否则生成一个
+            if url_filename and '.' in url_filename:
+                file_name = url_filename
+            else:
+                # 从voice_url推断文件扩展名，默认为mp3
+                file_extension = '.mp3'  # 音频提取后通常是mp3格式
+                file_name = f"audio_{task_id}{file_extension}"
             
             logger.info(f"任务 {task_id}: 收到音频降噪任务")
             logger.info(f"任务 {task_id}: 音频URL: {file_url}")
-            logger.info(f"任务 {task_id}: 文件信息 - 原始名称: {task_info.get('filename', 'N/A')}, "
+            logger.info(f"任务 {task_id}: 使用文件名: {file_name}")
+            logger.info(f"任务 {task_id}: 原始文件信息 - 原始名称: {task_info.get('filename', 'N/A')}, "
                        f"文件大小: {task_info.get('size', 'N/A')}, "
                        f"是否已提取: {task_info.get('is_extract', 0)}, "
                        f"是否已降噪: {task_info.get('is_clear', 0)}")

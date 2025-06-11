@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python -u
 # -*- coding: utf-8 -*-
 
@@ -90,22 +89,51 @@ def read_and_config_file(args, input_path, decode=0):
                 processed_list.append(input_path)
             else:
                 # Read file paths from the input text file (one path per line)
-                with open(input_path) as fid:
-                    for line in fid:
-                        path_s = line.strip().split()  # Split paths (space-separated)
-                        processed_list.append(path_s[0])  # Add the first path (input audio path)
+                # 修复编码问题：使用utf-8编码读取文件
+                try:
+                    with open(input_path, 'r', encoding='utf-8') as fid:
+                        for line in fid:
+                            path_s = line.strip().split()  # Split paths (space-separated)
+                            processed_list.append(path_s[0])  # Add the first path (input audio path)
+                except UnicodeDecodeError:
+                    # 如果utf-8失败，尝试其他编码
+                    try:
+                        with open(input_path, 'r', encoding='gbk') as fid:
+                            for line in fid:
+                                path_s = line.strip().split()  # Split paths (space-separated)
+                                processed_list.append(path_s[0])  # Add the first path (input audio path)
+                    except UnicodeDecodeError:
+                        # 如果仍然失败，可能是二进制文件，直接返回路径
+                        processed_list.append(input_path)
         return processed_list
 
     # If decode is False, treat the input file as a configuration file
-    with open(input_path) as fid:
-        for line in fid:
-            tmp_paths = line.strip().split()  # Split paths (space-separated)
-            if len(tmp_paths) == 2:
-                # If two paths per line, treat the second as 'condition_audio'
-                sample = {'inputs': tmp_paths[0], 'condition_audio': tmp_paths[1]}
-            elif len(tmp_paths) == 1:
-                # If only one path per line, treat it as 'inputs'
-                sample = {'inputs': tmp_paths[0]}
-            processed_list.append(sample)  # Append processed sample to list
+    try:
+        with open(input_path, 'r', encoding='utf-8') as fid:
+            for line in fid:
+                tmp_paths = line.strip().split()  # Split paths (space-separated)
+                if len(tmp_paths) == 2:
+                    # If two paths per line, treat the second as 'condition_audio'
+                    sample = {'inputs': tmp_paths[0], 'condition_audio': tmp_paths[1]}
+                elif len(tmp_paths) == 1:
+                    # If only one path per line, treat it as 'inputs'
+                    sample = {'inputs': tmp_paths[0]}
+                processed_list.append(sample)  # Append processed sample to list
+    except UnicodeDecodeError:
+        # 如果编码失败，尝试gbk编码
+        try:
+            with open(input_path, 'r', encoding='gbk') as fid:
+                for line in fid:
+                    tmp_paths = line.strip().split()  # Split paths (space-separated)
+                    if len(tmp_paths) == 2:
+                        # If two paths per line, treat the second as 'condition_audio'
+                        sample = {'inputs': tmp_paths[0], 'condition_audio': tmp_paths[1]}
+                    elif len(tmp_paths) == 1:
+                        # If only one path per line, treat it as 'inputs'
+                        sample = {'inputs': tmp_paths[0]}
+                    processed_list.append(sample)  # Append processed sample to list
+        except UnicodeDecodeError:
+            # 如果仍然失败，返回空列表
+            pass
     return processed_list
 
