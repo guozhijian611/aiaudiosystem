@@ -53,75 +53,90 @@ class TaskController
     }
 
     /**
-     * 获取用户任务列表 - 支持搜索和排序
+     * 获取用户任务列表 - 支持搜索、排序、筛选、分页
      * 
-     * 接受的参数：
-     * @param int $page 页码，默认第1页
-     * @param int $limit 每页数量，默认10条
-     * @param string $search 搜索关键词，支持任务名称和任务编号搜索
-     * @param string $sort 排序字段，支持：id, name, number, status, create_time, update_time
-     * @param string $order 排序方向：asc(升序) 或 desc(降序)，默认desc
+     * 参考AdminController::getUserList的参数构建方式进行优化
+     * 
+     * @param Request $request 请求对象，支持以下参数：
+     * @param int $page 页码，默认第1页，最小值为1
+     * @param int $limit 每页数量，默认10条，范围1-100
+     * @param string $search 搜索关键词，支持任务名称和任务编号模糊搜索
+     * @param string $order_field 排序字段，支持：id, name, number, status, create_time, update_time
+     * @param string $order_type 排序方向：asc(升序) 或 desc(降序)，默认desc
      * @param int $status 状态筛选，可选值：1-空任务, 2-已检测, 3-已转写, 4-处理中, 5-暂停中
      * @param string $start_time 开始时间筛选，格式：Y-m-d
      * @param string $end_time 结束时间筛选，格式：Y-m-d
+     * @param string $fields 查询字段，默认：id,number,name,status,create_time,update_time
+     * 
+     * @return Response 返回JSON格式的任务列表数据
      */
     public function taskList(Request $request)
     {
         $uid = $request->user['id'];
-        $page = $request->post('page', 1); // 页码，默认第1页
-        $limit = $request->post('limit', 10); // 每页数量，默认10条
-        $search = $request->post('search', ''); // 搜索关键词
-        $sort = $request->post('sort', 'id'); // 排序字段
-        $order = $request->post('order', 'desc'); // 排序方向
-        $status = $request->post('status', ''); // 状态筛选
-        $startTime = $request->post('start_time', ''); // 开始时间
-        $endTime = $request->post('end_time', ''); // 结束时间
-
+        
+        // 获取所有查询参数
+        $page = (int)$request->post('page', 1);
+        $limit = (int)$request->post('limit', 10);
+        $search = $request->post('search', '');
+        $order_field = $request->post('order_field', 'create_time'); // 改为order_field统一命名
+        $order_type = $request->post('order_type', 'desc'); // 改为order_type统一命名
+        $status = $request->post('status', '');
+        $start_time = $request->post('start_time', '');
+        $end_time = $request->post('end_time', '');
+        $fields = $request->post('fields', 'id,number,name,status,create_time,update_time');
+        
+        // 参数验证 - 参考AdminController的验证方式
+        if ($page < 1) {
+            $page = 1;
+        }
+        if ($limit < 1 || $limit > 100) {
+            $limit = 10;
+        }
+        
         // 验证排序字段，防止SQL注入
-        $allowedSortFields = ['id', 'name', 'number', 'status', 'create_time', 'update_time'];
-        if (!in_array($sort, $allowedSortFields)) {
-            $sort = 'id';
+        $allowed_order_fields = ['id', 'name', 'number', 'status', 'create_time', 'update_time'];
+        if (!in_array($order_field, $allowed_order_fields)) {
+            $order_field = 'create_time';
         }
-
+        
         // 验证排序方向
-        $order = strtolower($order);
-        if (!in_array($order, ['asc', 'desc'])) {
-            $order = 'desc';
-        }
-
+        $order_type = in_array(strtolower($order_type), ['asc', 'desc']) ? strtolower($order_type) : 'desc';
+        
         // 验证状态值
-        if (!empty($status) && !in_array($status, [1, 2, 3, 4, 5])) {
+        if ($status !== '' && !in_array($status, [1, 2, 3, 4, 5])) {
             $status = '';
         }
 
-        $task = new Task();
         try {
-            // 构建查询条件
-            $query = $task->where('uid', $uid);
+            // 构建查询 - 增加字段筛选功能
+            $query = Task::field($fields)->where('uid', $uid);
 
-            // 添加搜索功能 - 支持任务名称和任务编号模糊搜索
+            // 搜索条件 - 参考AdminController的搜索方式
             if (!empty($search)) {
-                $query->where(function ($query) use ($search) {
-                    $query->where('name', 'like', '%' . $search . '%')
+                $query->where(function($query) use ($search) {
+                    $query->whereLike('name', '%' . $search . '%')
                           ->whereOr('number', 'like', '%' . $search . '%');
                 });
             }
 
-            // 添加状态筛选
-            if (!empty($status)) {
+            // 状态筛选
+            if ($status !== '') {
                 $query->where('status', $status);
             }
 
-            // 添加时间范围筛选
-            if (!empty($startTime)) {
-                $query->where('create_time', '>=', $startTime . ' 00:00:00');
+            // 时间范围筛选
+            if (!empty($start_time)) {
+                $query->where('create_time', '>=', $start_time . ' 00:00:00');
             }
-            if (!empty($endTime)) {
-                $query->where('create_time', '<=', $endTime . ' 23:59:59');
+            if (!empty($end_time)) {
+                $query->where('create_time', '<=', $end_time . ' 23:59:59');
             }
+            
+            // 排除已删除的任务（如果有软删除字段）
+            $query->whereNull('delete_time');
 
-            // 添加排序
-            $query->order($sort, $order);
+            // 排序
+            $query->order($order_field, $order_type);
 
             // 分页查询
             $result = $query->paginate([
@@ -132,7 +147,7 @@ class TaskController
             $currentPage = $result->currentPage();
             $lastPage = $result->lastPage();
 
-            // 构建返回数据，包含搜索和排序信息
+            // 构建返回数据 - 参考AdminController的返回格式
             return jsons(200, '获取任务列表成功', [
                 'list' => $result->items(),
                 'total' => $result->total(),
@@ -140,33 +155,40 @@ class TaskController
                 'per_page' => $result->listRows(),
                 'last_page' => $lastPage,
                 'has_more' => $currentPage < $lastPage,
-                'search_info' => [
+                'search_params' => [
                     'search' => $search,
-                    'sort' => $sort,
-                    'order' => $order,
                     'status' => $status,
-                    'start_time' => $startTime,
-                    'end_time' => $endTime
+                    'start_time' => $start_time,
+                    'end_time' => $end_time,
+                    'order_field' => $order_field,
+                    'order_type' => $order_type
                 ],
-                'status_options' => [
-                    ['value' => 1, 'label' => '空任务'],
-                    ['value' => 2, 'label' => '已检测'],
-                    ['value' => 3, 'label' => '已转写'],
-                    ['value' => 4, 'label' => '处理中'],
-                    ['value' => 5, 'label' => '暂停中']
-                ],
-                'sort_options' => [
-                    ['value' => 'id', 'label' => 'ID'],
-                    ['value' => 'name', 'label' => '任务名称'],
-                    ['value' => 'number', 'label' => '任务编号'],
-                    ['value' => 'status', 'label' => '任务状态'],
-                    ['value' => 'create_time', 'label' => '创建时间'],
-                    ['value' => 'update_time', 'label' => '更新时间']
+                'filter_options' => [
+                    'status_options' => [
+                        ['value' => '', 'label' => '全部状态'],
+                        ['value' => 1, 'label' => '空任务'],
+                        ['value' => 2, 'label' => '已检测'],
+                        ['value' => 3, 'label' => '已转写'],
+                        ['value' => 4, 'label' => '处理中'],
+                        ['value' => 5, 'label' => '暂停中']
+                    ],
+                    'sort_options' => [
+                        ['value' => 'id', 'label' => 'ID'],
+                        ['value' => 'name', 'label' => '任务名称'],
+                        ['value' => 'number', 'label' => '任务编号'],
+                        ['value' => 'status', 'label' => '任务状态'],
+                        ['value' => 'create_time', 'label' => '创建时间'],
+                        ['value' => 'update_time', 'label' => '更新时间']
+                    ],
+                    'order_types' => [
+                        ['value' => 'desc', 'label' => '降序'],
+                        ['value' => 'asc', 'label' => '升序']
+                    ]
                 ]
             ]);
         } catch (Exception $e) {
-            // 使用 getMessage() 获取具体错误信息
-            return jsons(400, '获取任务列表失败：' . $e->getMessage());
+            // 返回更详细的错误信息
+            return jsons(500, '获取任务列表失败', $e->getMessage());
         }
     }
 

@@ -18,11 +18,15 @@ use app\controller\UserController;
 use app\controller\AdminController;
 use app\controller\TaskController;
 use app\controller\TaskInfoController;
+use app\controller\IndexController;
 
 Route::options('/{path:.+}', function ($request, $path) {
     return response('');
 });
 
+Route::group('/index', function () {
+    Route::post('/taskStatusCount', [IndexController::class, 'taskStatusCount']);
+});
 
 Route::group('/user', function () {
     Route::post('/login', [UserController::class, 'login']);
@@ -35,6 +39,7 @@ Route::group('/user', function () {
 
 Route::group('/admin', function () {
     Route::post('/updateUserStatus', [AdminController::class, 'updateUserStatus']);
+    Route::post('/getTaskList', [AdminController::class, 'getTaskList']);
 });
 
 Route::group('/task', function () {
