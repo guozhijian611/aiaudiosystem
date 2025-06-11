@@ -1,0 +1,353 @@
+<template>
+  <component
+{% if component_type == 1 %}
+    is="a-modal"
+{% else %}
+    is="a-drawer"
+{% endif %}
+{% if is_full == 2 %}
+{% if component_type == 1 %}
+    :fullscreen="true"
+{% else %}
+    width="100%"
+{% endif %}
+{% else %}
+    :width="tool.getDevice() === 'mobile' ? '100%' : '{{form_width}}px'"
+{% endif %}
+    v-model:visible="visible"
+    :title="title"
+    :mask-closable="false"
+    :ok-loading="loading"
+    @cancel="close"
+    @before-ok="submit">
+    <!-- 表单信息 start -->
+    <a-form ref="formRef" :model="formData" :rules="rules" :auto-label-width="true">
+      <a-row :gutter="10">
+{% for column in form_columns %}
+{% if column.is_insert == 2 %}
+{% if column.view_type == 'input' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-input v-model="formData.{{column.column_name}}" placeholder="请输入{{column.column_comment}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'password' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-input-password v-model="formData.{{column.column_name}}" placeholder="请输入{{column.column_comment}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'textarea' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-textarea v-model="formData.{{column.column_name}}" placeholder="请输入{{column.column_comment}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'inputNumber' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-input-number v-model="formData.{{column.column_name}}" placeholder="请输入{{column.column_comment}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'inputTag' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-input-tag v-model="formData.{{column.column_name}}" placeholder="请输入{{column.column_comment}}" allow-clear />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'switch' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <sa-switch v-model="formData.{{column.column_name}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'slider' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-slider v-model="formData.{{column.column_name}}" placeholder="请输入{{column.column_comment}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'select' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-select
+              v-model="formData.{{column.column_name}}"
+              :field-names="{ label: '{{column.options.label}}', value: '{{column.options.value}}' }"
+              :options="optionData.{{column.column_name}}"
+              placeholder="请选择{{column.column_comment}}"
+              allow-clear
+            />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'saSelect' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <sa-select v-model="formData.{{column.column_name}}" dict="{{column.dict_type}}" placeholder="请选择{{column.column_comment}}" allow-clear />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'treeSelect' and column.column_name == options.tree_parent_id %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-tree-select
+              v-model="formData.{{column.column_name}}"
+              :data="optionData.treeData"
+              :field-names="{ key: '{{options.tree_id}}', title: '{{options.tree_name}}', icon: 'customIcon' }"
+              placeholder="请选择{{column.column_comment}}"
+              allow-clear
+            />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'treeSelect' and column.column_name != options.tree_parent_id %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-tree-select
+              v-model="formData.{{column.column_name}}"
+              :data="optionData.{{column.column_name}}"
+              :field-names="{ key: '{{column.options.field_value}}', title: '{{column.options.field_label}}', icon: 'customIcon' }"
+              placeholder="请选择{{column.column_comment}}"
+              allow-clear
+            />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'radio' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <sa-radio v-model="formData.{{column.column_name}}" dict="{{column.dict_type}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'checkbox' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <sa-checkbox v-model="formData.{{column.column_name}}" dict="{{column.dict_type}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'date' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-date-picker
+              v-model="formData.{{column.column_name}}"
+              :show-time="{{column.options.showTime|bool}}"
+              mode="{{column.options.mode}}"
+              style="width:100%"
+              placeholder="请选择{{column.column_comment}}"
+             />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'time' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-time-picker
+              v-model="formData.{{column.column_name}}"
+              style="width:100%"
+              placeholder="请选择{{column.column_comment}}"
+            />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'rate' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-rate v-model="formData.{{column.column_name}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'cascader' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <a-cascader
+              v-model="formData.{{column.column_name}}"
+              :options="optionData.{{column.column_name}}"
+              :field-names="{ label:'{{column.options.field_label}}', value:'{{column.options.field_value}}' }"
+              placeholder="请选择{{column.column_comment}}"
+              allow-clear />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'userSelect' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <sa-user v-model="formData.{{column.column_name}}" :isEcho="true" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'cityLinkage' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <ma-cityLinkage v-model="formData.{{column.column_name}}" type="{{column.options.type}}" mode="{{column.options.mode}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'uploadImage' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <sa-upload-image v-model="formData.{{column.column_name}}" :limit="{{column.options.limit}}" :multiple="{{column.options.multiple|bool}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'uploadFile' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <sa-upload-file v-model="formData.{{column.column_name}}" :limit="{{column.options.limit}}" :multiple="{{column.options.multiple|bool}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% if column.view_type == 'wangEditor' %}
+        <a-col :span="{{column.span | orFunc(span)}}">
+          <a-form-item label="{{column.column_comment}}" field="{{column.column_name}}">
+            <ma-wangEditor v-model="formData.{{column.column_name}}" :height="{{column.options.height}}" />
+          </a-form-item>
+        </a-col>
+{% endif %}
+{% endif %}
+{% endfor %}
+      </a-row>
+    </a-form>
+    <!-- 表单信息 end -->
+  </component>
+</template>
+
+<script setup>
+import { ref, reactive, computed } from 'vue'
+import tool from '@/utils/tool'
+import commonApi from '@/api/common'
+import { Message, Modal } from '@arco-design/web-vue'
+{% if package_name == '' %}
+import api from '../api/{{business_name}}'
+{% else %}
+import api from '../../api/{{package_name}}/{{business_name}}'
+{% endif %}
+
+const emit = defineEmits(['success'])
+// 引用定义
+const visible = ref(false)
+const loading = ref(false)
+const formRef = ref()
+const mode = ref('')
+const optionData = reactive({
+{% if tpl_category == 'tree' %}
+  treeData: [],
+{% endif %}
+{% for column in form_columns %}
+{% if column.column_name != options.tree_parent_id %}
+{% if column.view_type == 'treeSelect' or column.view_type == 'select' or column.view_type == 'cascader' %}
+  {{column.column_name}}: [],
+{% endif %}
+{% endif %}
+{% endfor %}
+})
+
+let title = computed(() => {
+  return '{{menu_name}}' + (mode.value == 'add' ? '-新增' : '-编辑')
+})
+
+// 表单初始值
+const initialFormData = {
+{% for column in form_columns %}
+{% if column.is_pk == 2 %}
+  {{column.column_name}}: null,
+{% elseif column.is_insert == 2 %}
+{% if column.column_type == 'int' or column.column_type == 'smallint' or column.column_type == 'tinyint' %}
+  {{column.column_name}}: {{column.default_value | parseNumber}},
+{% elseif column.view_type == 'inputTag' %}
+  {{column.column_name}}: [],
+{% else %}
+  {{column.column_name}}: '{{column.default_value}}',
+{% endif %}
+{% endif %}
+{% endfor %}
+}
+
+// 表单信息
+const formData = reactive({ ...initialFormData })
+
+// 验证规则
+const rules = {
+{% for column in form_columns %}
+{% if column.is_required == 2 and column.is_pk == 1  %}
+  {{column.column_name}}: [{ required: true, message: '{{column.column_comment}}必需填写' }],
+{% endif %}
+{% endfor %}
+}
+
+// 打开弹框
+const open = async (type = 'add') => {
+  mode.value = type
+  // 重置表单数据
+  Object.assign(formData, initialFormData)
+  formRef.value.clearValidate()
+  visible.value = true
+  await initPage()
+}
+
+// 初始化页面数据
+const initPage = async () => {
+{% if tpl_category == 'tree' %}
+  const resp = await api.getPageList()
+  optionData.treeData = resp.data
+{% endif %}
+{% for column in form_columns %}
+{% if column.column_name != options.tree_parent_id %}
+{% if column.view_type == 'treeSelect' or column.view_type == 'select' or column.view_type == 'cascader' %}
+  const resp_{{column.column_name}} = await commonApi.commonGet('{{column.options.url}}')
+  optionData.{{column.column_name}} = resp_{{column.column_name}}.data
+{% endif %}
+{% endif %}
+{% endfor %}
+}
+
+// 设置数据
+const setFormData = async (data) => {
+  for (const key in formData) {
+    if (data[key] != null && data[key] != undefined) {
+      formData[key] = data[key]
+    }
+  }
+}
+
+// 数据保存
+const submit = async (done) => {
+  const validate = await formRef.value?.validate()
+  if (!validate) {
+    loading.value = true
+    let data = { ...formData }
+    let result = {}
+    if (mode.value === 'add') {
+      // 添加数据
+      data.{{pk}} = undefined
+      result = await api.save(data)
+    } else {
+      // 修改数据
+      result = await api.update(data.{{pk}}, data)
+    }
+    if (result.code === 200) {
+      Message.success('操作成功')
+      emit('success')
+      done(true)
+    }
+    // 防止连续点击提交
+    setTimeout(() => {
+      loading.value = false
+    }, 500)
+  }
+  done(false)
+}
+
+// 关闭弹窗
+const close = () => (visible.value = false)
+
+defineExpose({ open, setFormData })
+</script>

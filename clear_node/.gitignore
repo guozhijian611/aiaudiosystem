@@ -1,0 +1,9 @@
+conda
+/conda
+checkpoints
+/train
+/work
+/test_output
+/ClearerVoice-Studio/clearvoice/checkpoints
+/ClearerVoice-Studio/asset
+/ClearerVoice-Studio/clearvoice/samples

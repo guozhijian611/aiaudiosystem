@@ -1,0 +1,64 @@
+<?php
+// +----------------------------------------------------------------------
+// | saiadmin [ saiadmin快速开发框架 ]
+// +----------------------------------------------------------------------
+// | Author: your name
+// +----------------------------------------------------------------------
+namespace app\api\controller;
+
+use plugin\saiadmin\basic\BaseController;
+use app\api\logic\TaskLogic;
+use app\api\validate\TaskValidate;
+use support\Request;
+use support\Response;
+
+/**
+ * 任务管理控制器
+ */
+class TaskController extends BaseController
+{
+    /**
+     * 构造函数
+     */
+    public function __construct()
+    {
+        $this->logic = new TaskLogic();
+        $this->validate = new TaskValidate;
+        parent::__construct();
+    }
+
+    /**
+     * 数据列表
+     * @param Request $request
+     * @return Response
+     */
+    public function index(Request $request): Response
+    {
+        $where = $request->more([
+            ['id', ''],
+            ['uid', ''],
+            ['number', ''],
+            ['name', ''],
+        ]);
+        $query = $this->logic->search($where);
+        $data = $this->logic->getList($query);
+        return $this->success($data);
+    }
+
+    /**
+     * 导出数据
+     * @param Request $request
+     * @return Response
+     */
+    public function export(Request $request) : Response
+    {
+        $where = $request->more([
+            ['id', ''],
+            ['uid', ''],
+            ['number', ''],
+            ['name', ''],
+        ]);
+        return $this->logic->export($where);
+    }
+
+}

@@ -1,0 +1,376 @@
+# AI音频处理系统 .gitignore
+
+# ================================
+# 环境配置和密钥文件
+# ================================
+# .env
+conda
+/conda
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+config/database.php
+config/secret.php
+
+# ================================
+# Python相关 (cut_node)
+# ================================
+# Python缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+conda
+.conda
+
+# Python虚拟环境
+cut_node/venv/
+cut_node/env/
+.venv/
+.env/
+
+# Python分发和打包
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+/train
+
+# ClearerVoice-Studio训练相关
+clear_node/ClearerVoice-Studio/train/
+clear_node/ClearerVoice-Studio/clearvoice/checkpoints/
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# Poetry
+poetry.lock
+
+# ================================
+# PHP相关 (webman)
+# ================================
+# Composer
+webman/vendor/
+webman/composer.lock
+
+# PHP缓存和会话
+webman/runtime/
+webman/cache/
+webman/sessions/
+webman/storage/logs/
+webman/storage/cache/
+webman/storage/sessions/
+webman/storage/views/
+
+# Laravel/Webman特定
+webman/bootstrap/cache/
+# webman/config/app.php
+# webman/config/database.php
+
+# ================================
+# 工作目录和临时文件
+# ================================
+# Cut Node工作目录
+cut_node/work/
+cut_node/temp/
+cut_node/logs/
+
+# 音频和视频文件
+*.mp3
+*.mp4
+*.wav
+*.avi
+*.mov
+*.flv
+*.wmv
+*.m4a
+*.aac
+*.ogg
+*.webm
+
+# 图片文件
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.svg
+*.ico
+
+# 文档文件
+*.pdf
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+
+# 压缩文件
+*.zip
+*.rar
+*.tar
+*.gz
+*.7z
+
+# ================================
+# 日志文件
+# ================================
+*.log
+logs/
+log/
+webman/storage/logs/
+cut_node/logs/
+runtime/logs/
+
+# ================================
+# 数据库文件
+# ================================
+*.sqlite
+*.sqlite3
+*.db
+database.db
+*.sql.backup
+
+# MySQL转储文件
+# *.sql
+
+# ================================
+# IDE和编辑器
+# ================================
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+
+# ================================
+# 操作系统相关
+# ================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# ================================
+# Docker相关
+# ================================
+# Docker volumes
+docker-data/
+docker-volumes/
+
+# Docker Compose覆盖
+docker-compose.override.yml
+
+# ================================
+# 备份和临时文件
+# ================================
+*.backup
+*.bak
+*.tmp
+*.temp
+*~
+*.orig
+*.rej
+*.old
+
+# ================================
+# 测试和覆盖率
+# ================================
+# Python测试
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# PHP测试
+/tests/coverage/
+phpunit.xml
+
+# ================================
+# 前端相关 (saiadmin-vue)
+# ================================
+# Node.js依赖
+node_modules/
+saiadmin-vue/node_modules/
+
+# npm/yarn/pnpm
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+pnpm-lock.yaml
+
+# 构建产物
+saiadmin-vue/dist/
+saiadmin-vue/build/
+dist/
+build/
+
+# Vue.js特定
+.nuxt
+.output
+.generated
+
+# Vite
+.vite/
+vite.config.js.timestamp-*
+
+# 前端缓存
+.cache/
+.parcel-cache/
+
+# ESLint cache
+.eslintcache
+
+# TypeScript
+*.tsbuildinfo
+
+# ================================
+# 部署相关
+# ================================
+deployment/
+deploy.sh
+*.deploy
+
+# ================================
+# 监控和性能
+# ================================
+# 性能分析文件
+*.prof
+profile/
+
+# APM工具
+newrelic.ini
+apm.ini
+
+# ================================
+# 队列和消息系统
+# ================================
+# RabbitMQ数据目录
+rabbitmq-data/
+
+# Redis数据目录
+redis-data/
+
+# ================================
+# 自定义忽略
+# ================================
+# 项目特定的临时目录
+temp/
+tmp/
+storage/
+uploads/
+downloads/
+
+# Webman存储目录
+webman/public/storage/
+webman/storage/app/
+webman/storage/framework/
+
+# 队列特定的存储
+webman/public/storage/queue/
+
+# 配置文件副本
+*.config.backup
+config.*.php
+
+# 调试文件
+debug.log
+error.log
+access.log
+
+# 开发工具
+.phplint-cache
+.phpcs-cache
+
+# ================================
+# 安全相关
+# ================================
+# SSL证书
+*.crt
+*.cert
+*.ca-bundle
+
+# 私钥
+private/
+secrets/
+
+# 验证令牌
+tokens/
+auth/
+
+# ================================
+# 文档构建
+# ================================
+docs/_build/
+site/
+
+# Sphinx documentation
+docs/_build/
+
+# ================================
+# 特殊文件
+# ================================
+# 系统文件
+.htaccess.backup
+robots.txt.backup
+
+# 版本文件
+VERSION
+CHANGELOG.md.backup *.pth
+**/mixture_data_list_*.csv
+*.pt
+*.pth
+**/checkpoints/
+*.pt
+*.pth
+**/checkpoints/
+clear_node/ClearerVoice-Studio/clearvoice/checkpoints/

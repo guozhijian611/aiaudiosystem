@@ -1,0 +1,12 @@
+# 基础依赖 (environment.yml中没有的)
+pika==1.3.2
+requests==2.31.0
+python-dotenv==1.0.0
+
+# 注意：以下依赖已在environment.yml中定义，这里仅作为备注
+# 已在environment.yml中的依赖:
+# - librosa, soundfile, numpy, scipy
+# - torch, torchaudio, torchvision 
+# - pyworld, pystoi, pesq, resampy, pydub
+# - tqdm, pyyaml, onnxruntime, huggingface-hub, gdown
+# - typeguard
