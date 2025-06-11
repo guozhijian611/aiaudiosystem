@@ -124,10 +124,12 @@ class QueueConsumer:
             message = json.loads(body.decode('utf-8'))
             logger.info(f"接收到任务: {message}")
             
-            # 验证消息格式
-            task_id = message.get('task_id')
+            # 支持新旧两种消息格式获取task_id
+            task_info = message.get('task_info', {})
+            task_id = task_info.get('id') if task_info else message.get('task_id')
+            
             if not task_id:
-                raise ValueError("消息中缺少task_id")
+                raise ValueError("消息中缺少task_id或task_info.id")
             
             # 处理任务
             success = self._process_task(message)
