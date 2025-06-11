@@ -4,7 +4,7 @@
 
 ## 子模块地址
 ```bash
-#用户前端
+#user_node用户前端
 https://github.com/linchunyan123/newAIvoice
 
 #clear_nod依赖 ClearVoiceStudio
