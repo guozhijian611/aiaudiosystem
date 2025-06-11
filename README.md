@@ -24,13 +24,13 @@ https://github.com/modelscope/FunASR/tree/main
 本系统由以下后端服务组成
 - Webman 中台服务
 - Saiadmin-vue  中台前端
-- AiVoice 用户前端
+- AiVoice 用户前端 【处理中】
 - Redis 缓存数据库
 - RabbitMQ 消息队列服务
 - MySQL84 数据库服务
 - MiniO S3文件存储服务【Option】
-- Cut_Node 音频切割节点
-- Clear_Node 音频降噪节点
+- Cut_Node 音频切割节点 【Finish】
+- Clear_Node 音频降噪节点 【Finish】
 - Quick_Node 快速识别有效音频节点
 - Translate_Node 文字转写节点
 - Real_Node 实时语音转写节点【Dev】

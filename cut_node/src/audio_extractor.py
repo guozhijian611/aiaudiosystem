@@ -240,6 +240,49 @@ class AudioExtractor:
         except:
             return False
     
+    def validate_audio_file(self, audio_path: str) -> bool:
+        """
+        验证音频文件是否有效
+        
+        Args:
+            audio_path (str): 音频文件路径
+            
+        Returns:
+            bool: 文件是否有效
+        """
+        try:
+            # 检查文件是否存在
+            if not os.path.exists(audio_path):
+                logger.error(f"音频文件不存在: {audio_path}")
+                return False
+            
+            # 检查文件大小
+            file_size = os.path.getsize(audio_path)
+            if file_size == 0:
+                logger.error(f"音频文件为空: {audio_path}")
+                return False
+            
+            # 使用ffmpeg探测音频文件信息
+            info = self.get_video_info(audio_path)  # get_video_info也可以处理音频文件
+            
+            # 验证是否包含音频流
+            if not info.get('has_audio', False):
+                logger.error(f"文件不包含音频流: {audio_path}")
+                return False
+            
+            # 验证音频时长
+            duration = info.get('duration', 0)
+            if duration <= 0:
+                logger.error(f"音频文件时长无效: {audio_path}, 时长: {duration}")
+                return False
+            
+            logger.info(f"音频文件验证通过: {audio_path} - 时长: {duration:.2f}秒, 大小: {self._format_size(file_size)}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"音频文件验证失败: {audio_path}, 错误: {e}")
+            return False
+    
     def _format_size(self, size_bytes: int) -> str:
         """
         格式化文件大小

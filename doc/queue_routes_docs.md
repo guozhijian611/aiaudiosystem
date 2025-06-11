@@ -227,3 +227,187 @@ curl -X POST http://domain/queue/continue-transcribe \
 3. **错误重试**: 失败的任务会记录重试次数
 4. **文件存储**: 队列上传的文件存储在`storage/queue/日期/`目录下
 5. **回调时序**: 必须先调用upload接口上传文件，再调用callback接口处理业务逻辑 
+
+# 队列消息格式说明文档
+
+## 📋 新版MQ消息格式 (传递完整TaskInfo数据)
+
+### 消息结构
+
+所有队列消息现在都使用统一的格式，包含完整的TaskInfo数据：
+
+```json
+{
+  "task_info": {
+    "id": 123,
+    "tid": 45,
+    "filename": "test_video.mp4",
+    "url": "http://domain.com/storage/original/test_video.mp4",
+    "voice_url": "http://domain.com/storage/voice/test_audio.wav",
+    "clear_url": "http://domain.com/storage/clear/test_clear.wav",
+    "type": 2,
+    "is_extract": 1,
+    "is_clear": 1,
+    "fast_status": 2,
+    "transcribe_status": 2,
+    "step": 3,
+    "error_msg": "",
+    "retry_count": 0,
+    "effective_voice": "",
+    "total_voice": "",
+    "language": "",
+    "text_info": null,
+    "create_time": "2024-03-20 10:00:00",
+    "update_time": "2024-03-20 10:30:00"
+  },
+  "task_flow": 1,
+  "processing_type": "clear"
+}
+```
+
+## 🎯 节点使用指南
+
+### 1. cut_node (音频提取节点)
+
+**使用的URL**: `task_info.url` (原始文件URL)
+
+```python
+# Python节点示例
+def process_message(message):
+    task_info = message['task_info']
+    original_url = task_info['url']  # 使用原始文件URL
+    
+    # 处理视频提取音频
+    voice_url = extract_audio(original_url)
+    
+    # 回调通知处理完成
+    callback_data = {
+        'task_id': task_info['id'],
+        'task_type': 1,  # TASK_TYPE_EXTRACT
+        'status': 'success',
+        'data': {
+            'voice_url': voice_url
+        }
+    }
+    send_callback(callback_data)
+```
+
+### 2. clear_node (音频降噪节点)
+
+**使用的URL**: `task_info.voice_url` (提取后的音频URL)
+
+```python
+def process_message(message):
+    task_info = message['task_info']
+    voice_url = task_info['voice_url']  # 使用提取后的音频URL
+    
+    # 音频降噪处理
+    clear_url = clear_audio(voice_url)
+    
+    # 回调通知处理完成
+    callback_data = {
+        'task_id': task_info['id'],
+        'task_type': 2,  # TASK_TYPE_CONVERT
+        'status': 'success',
+        'data': {
+            'clear_url': clear_url
+        }
+    }
+    send_callback(callback_data)
+```
+
+### 3. quick_node (快速识别节点)
+
+**使用的URL**: `task_info.clear_url` (降噪后的音频URL)
+
+```python
+def process_message(message):
+    task_info = message['task_info']
+    clear_url = task_info['clear_url']  # 使用降噪后的音频URL
+    
+    # 快速语音识别
+    recognition_result = quick_recognize(clear_url)
+    
+    # 回调通知处理完成
+    callback_data = {
+        'task_id': task_info['id'],
+        'task_type': 3,  # TASK_TYPE_FAST_RECOGNITION
+        'status': 'success',
+        'data': {
+            'text_preview': recognition_result
+        }
+    }
+    send_callback(callback_data)
+```
+
+### 4. translate_node (文本转写节点)
+
+**使用的URL**: `task_info.clear_url` (降噪后的音频URL)
+
+```python
+def process_message(message):
+    task_info = message['task_info']
+    clear_url = task_info['clear_url']  # 使用降噪后的音频URL
+    
+    # 完整文本转写
+    transcribe_result = full_transcribe(clear_url)
+    
+    # 回调通知处理完成
+    callback_data = {
+        'task_id': task_info['id'],
+        'task_type': 4,  # TASK_TYPE_TEXT_CONVERT
+        'status': 'success',
+        'data': {
+            'text_info': transcribe_result['text'],
+            'effective_voice': transcribe_result['effective_duration'],
+            'total_voice': transcribe_result['total_duration'],
+            'language': transcribe_result['language']
+        }
+    }
+    send_callback(callback_data)
+```
+
+## 🔄 URL使用流程图
+
+```
+原始文件 (url)
+    ↓
+[cut_node] 使用 url 提取音频
+    ↓
+音频文件 (voice_url)
+    ↓
+[clear_node] 使用 voice_url 降噪
+    ↓
+降噪音频 (clear_url)
+    ↓
+[quick_node/translate_node] 使用 clear_url 识别/转写
+```
+
+## 💡 优势说明
+
+1. **减少数据库查询**: 节点无需再次查询TaskInfo获取相关信息
+2. **完整上下文**: 节点可以根据任务状态做更智能的处理决策
+3. **错误处理**: 节点可以访问retry_count等信息实现重试策略
+4. **业务逻辑**: 节点可以根据task_flow等信息调整处理策略
+
+## 🔧 回调接口
+
+处理完成后，节点需要调用回调接口通知系统：
+
+```bash
+POST /queue/handleTaskCallback
+Content-Type: application/json
+
+{
+  "task_id": 123,
+  "task_type": 1,
+  "status": "success",  // 或 "failed"
+  "message": "",        // 失败时的错误信息
+  "data": {             // 成功时的结果数据
+    "voice_url": "...",
+    "clear_url": "...",
+    "text_info": "...",
+    // ... 其他相关数据
+  }
+}
+``` 

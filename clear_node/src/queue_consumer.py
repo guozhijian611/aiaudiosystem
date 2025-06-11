@@ -95,67 +95,118 @@ class QueueConsumer:
             properties: 属性对象
             body: 消息体
         """
-        task_data = None
-        task_number = None
+        task_id = None
         
         try:
             # 解析消息
             message = body.decode('utf-8')
             task_data = json.loads(message)
-            task_number = task_data.get('task_number')
             
-            logger.info(f"收到音频清理任务: {task_number}")
-            logger.info(f"任务数据: {task_data}")
+            # 支持新旧两种消息格式
+            task_info = task_data.get('task_info', {})
             
-            # 验证必要字段
-            required_fields = ['task_number', 'file_url', 'file_name']
-            for field in required_fields:
-                if field not in task_data:
-                    raise ValueError(f"缺少必要字段: {field}")
+            if task_info:
+                # 新格式：从task_info中获取数据
+                task_id = task_info.get('id')
+                task_number = f"task_{task_id}"
+                
+                # clear_node使用voice_url（提取后的音频URL）
+                file_url = task_info.get('voice_url')
+                file_name = task_info.get('origin_name', f"audio_{task_id}.mp3")
+                
+                logger.info(f"任务 {task_id}: 使用新格式消息")
+                logger.info(f"任务 {task_id}: 音频URL: {file_url}")
+                logger.info(f"任务 {task_id}: 文件信息 - 原始名称: {task_info.get('origin_name', 'N/A')}, "
+                           f"文件大小: {task_info.get('size_byte', 'N/A')} bytes, "
+                           f"是否已提取: {task_info.get('is_extract', 0)}, "
+                           f"是否已降噪: {task_info.get('is_clear', 0)}")
+                
+                # 验证必要字段
+                if not task_id:
+                    raise ValueError("task_info中缺少id字段")
+                if not file_url:
+                    raise ValueError("task_info中缺少voice_url字段")
+                    
+            else:
+                # 旧格式：兼容处理
+                task_number = task_data.get('task_number')
+                file_url = task_data.get('file_url')
+                file_name = task_data.get('file_name')
+                
+                # 从task_number中提取task_id（如果格式为task_123）
+                if task_number and task_number.startswith('task_'):
+                    task_id = task_number.replace('task_', '')
+                else:
+                    task_id = task_number
+                
+                logger.info(f"任务 {task_id}: 使用旧格式消息")
+                
+                # 验证必要字段
+                required_fields = ['task_number', 'file_url', 'file_name']
+                for field in required_fields:
+                    if field not in task_data:
+                        raise ValueError(f"缺少必要字段: {field}")
+            
+            logger.info(f"任务 {task_id}: 收到音频降噪任务")
+            logger.info(f"任务 {task_id}: 处理文件: {file_name}")
             
             # 发送开始处理通知
             self.api_client.send_callback(
-                task_number=task_number,
+                task_id=task_id,
+                task_type=2,  # 音频降噪任务类型
                 status='processing',
-                message='开始音频清理处理'
+                message='开始音频降噪处理'
             )
             
             # 处理任务
-            result = self._process_audio_task(task_data)
+            result = self._process_audio_task({
+                'task_id': task_id,
+                'task_number': task_number,
+                'file_url': file_url,
+                'file_name': file_name,
+                'task_info': task_info  # 传递完整的task_info用于回调
+            })
             
             # 发送完成通知
+            callback_data = {
+                'clear_url': result.get('output_url', ''),
+                'file_size': result.get('output_size', 0),
+                'file_name': result.get('output_filename', ''),
+                'duration': result.get('output_duration', 0),
+                'processing_time': result.get('processing_time', 0),
+                'model_used': self.config.CLEAR_MODEL,
+                'input_size': result.get('input_size', 0),
+                'quality_improvement': result.get('quality_improvement', 'N/A')
+            }
+            
             self.api_client.send_callback(
-                task_number=task_number,
-                status='completed',
-                message='音频清理处理完成',
-                file_url=result.get('output_url', ''),
-                extra_data={
-                    'processing_time': result.get('processing_time', 0),
-                    'input_size': result.get('input_size', 0),
-                    'output_size': result.get('output_size', 0),
-                    'model_used': self.config.CLEAR_MODEL
-                }
+                task_id=task_id,
+                task_type=2,  # 音频降噪任务类型
+                status='success',
+                message='音频降噪处理完成',
+                data=callback_data
             )
             
             # 确认消息
             channel.basic_ack(delivery_tag=method.delivery_tag)
-            logger.info(f"任务处理完成: {task_number}")
+            logger.info(f"任务 {task_id}: 处理完成")
             
         except json.JSONDecodeError as e:
             logger.error(f"消息格式错误: {e}")
             channel.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
             
         except Exception as e:
-            logger.error(f"处理任务失败: {e}")
+            logger.error(f"任务 {task_id}: 处理失败 - {e}")
             logger.error(f"错误详情: {traceback.format_exc()}")
             
             # 发送失败通知
-            if task_number:
+            if task_id:
                 try:
                     self.api_client.send_callback(
-                        task_number=task_number,
+                        task_id=task_id,
+                        task_type=2,  # 音频降噪任务类型
                         status='failed',
-                        message=f'音频清理处理失败: {str(e)}'
+                        message=f'音频降噪处理失败: {str(e)}'
                     )
                 except:
                     logger.error("发送失败通知时出错")
@@ -165,7 +216,7 @@ class QueueConsumer:
     
     def _process_audio_task(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        处理音频清理任务
+        处理音频降噪任务
         
         Args:
             task_data (Dict[str, Any]): 任务数据
@@ -176,9 +227,15 @@ class QueueConsumer:
         start_time = time.time()
         
         try:
+            task_id = task_data['task_id']
             task_number = task_data['task_number']
             file_url = task_data['file_url']
             file_name = task_data['file_name']
+            task_info = task_data.get('task_info', {})
+            
+            logger.info(f"任务 {task_id}: 开始音频降噪处理")
+            logger.info(f"任务 {task_id}: 输入文件URL: {file_url}")
+            logger.info(f"任务 {task_id}: 输入文件名: {file_name}")
             
             # 创建工作目录
             work_dir = os.path.join(self.config.WORK_DIR, task_number)
@@ -188,52 +245,89 @@ class QueueConsumer:
             
             # 下载输入文件
             input_path = os.path.join(temp_dir, file_name)
-            logger.info(f"下载输入文件: {file_url} -> {input_path}")
-            self.api_client.download_file(file_url, input_path)
+            logger.info(f"任务 {task_id}: 下载输入文件: {file_url} -> {input_path}")
+            
+            if not self.api_client.download_file(file_url, input_path):
+                raise Exception("音频文件下载失败")
+            
+            # 验证下载的文件
+            if not os.path.exists(input_path) or os.path.getsize(input_path) == 0:
+                raise Exception("下载的音频文件无效或为空")
             
             # 获取输入文件信息
             input_info = self.audio_cleaner.get_audio_info(input_path)
-            logger.info(f"输入文件信息: {input_info}")
+            logger.info(f"任务 {task_id}: 输入文件信息: 时长={input_info.get('duration', 0):.2f}秒, "
+                       f"大小={input_info.get('file_size', 0)} bytes")
             
             # 生成输出文件路径
-            output_filename = f"{os.path.splitext(file_name)[0]}_cleaned.{self.config.OUTPUT_FORMAT}"
+            base_name = os.path.splitext(file_name)[0]
+            output_filename = f"{base_name}_cleared.{self.config.OUTPUT_FORMAT}"
             output_path = os.path.join(work_dir, output_filename)
             
-            # 执行音频清理
-            logger.info(f"开始音频清理处理: {input_path}")
+            # 执行音频降噪
+            logger.info(f"任务 {task_id}: 开始音频降噪处理: {input_path} -> {output_path}")
+            logger.info(f"任务 {task_id}: 使用模型: {self.config.CLEAR_MODEL}")
+            
             cleaned_path = self.audio_cleaner.clean_audio(input_path, output_path)
+            
+            # 验证输出文件
+            if not os.path.exists(cleaned_path) or os.path.getsize(cleaned_path) == 0:
+                raise Exception("音频降噪处理失败，输出文件无效")
             
             # 获取输出文件信息
             output_info = self.audio_cleaner.get_audio_info(cleaned_path)
-            logger.info(f"输出文件信息: {output_info}")
+            logger.info(f"任务 {task_id}: 输出文件信息: 时长={output_info.get('duration', 0):.2f}秒, "
+                       f"大小={output_info.get('file_size', 0)} bytes")
             
             # 上传处理结果
-            logger.info(f"上传处理结果: {cleaned_path}")
+            logger.info(f"任务 {task_id}: 上传降噪后的音频文件: {cleaned_path}")
             upload_result = self.api_client.upload_file(
                 file_path=cleaned_path,
-                task_number=task_number,
-                file_type='cleaned_audio'
+                task_type=2  # 音频降噪任务类型
             )
             
-            # 计算处理时间
+            if not upload_result or not upload_result.get('data', {}).get('file_info', {}).get('url'):
+                raise Exception("降噪音频文件上传失败")
+            
+            # 计算处理时间和质量改进指标
             processing_time = time.time() - start_time
+            
+            # 简单的质量改进评估（基于文件大小变化）
+            input_size = input_info.get('file_size', 0)
+            output_size = output_info.get('file_size', 0)
+            size_change_percent = ((output_size - input_size) / input_size * 100) if input_size > 0 else 0
             
             # 清理临时文件
             self._cleanup_temp_files(temp_dir)
             
-            return {
-                'output_url': upload_result.get('file_url', ''),
+            file_info = upload_result.get('data', {}).get('file_info', {})
+            result = {
+                'output_url': file_info.get('url', ''),
+                'output_filename': output_filename,
                 'processing_time': round(processing_time, 2),
-                'input_size': input_info.get('file_size', 0),
-                'output_size': output_info.get('file_size', 0),
+                'input_size': input_size,
+                'output_size': output_size,
                 'input_duration': input_info.get('duration', 0),
                 'output_duration': output_info.get('duration', 0),
                 'model_used': self.config.CLEAR_MODEL,
-                'task_type': self.config.CLEAR_TASK
+                'task_type': self.config.CLEAR_TASK,
+                'quality_improvement': f"文件大小变化: {size_change_percent:+.1f}%",
+                'upload_info': {
+                    'file_name': file_info.get('origin_name', ''),
+                    'file_size': file_info.get('size_byte', 0),
+                    'upload_time': file_info.get('create_time', '')
+                }
             }
             
+            logger.info(f"任务 {task_id}: 音频降噪处理完成")
+            logger.info(f"任务 {task_id}: 处理时间: {result['processing_time']}秒")
+            logger.info(f"任务 {task_id}: 输出URL: {result['output_url']}")
+            
+            return result
+            
         except Exception as e:
-            logger.error(f"音频清理任务处理失败: {e}")
+            logger.error(f"任务 {task_id}: 音频降噪处理失败 - {e}")
+            logger.error(traceback.format_exc())
             raise
     
     def _cleanup_temp_files(self, temp_dir: str):

@@ -19,14 +19,13 @@ class APIClient:
         # 设置请求超时
         self.timeout = 30
         
-    def upload_file(self, file_path: str, task_number: str, file_type: str = 'audio') -> Dict[str, Any]:
+    def upload_file(self, file_path: str, task_type: int = 2) -> Dict[str, Any]:
         """
         上传文件到后端
         
         Args:
             file_path (str): 文件路径
-            task_number (str): 任务编号
-            file_type (str): 文件类型
+            task_type (int): 任务类型（2=音频降噪）
             
         Returns:
             Dict[str, Any]: 上传结果
@@ -43,8 +42,7 @@ class APIClient:
                 
                 # 准备数据
                 data = {
-                    'task_number': task_number,
-                    'file_type': file_type,
+                    'task_type': task_type,
                     'node_type': 'clear_node'
                 }
                 
@@ -72,15 +70,22 @@ class APIClient:
             logger.error(f"上传文件失败: {e}")
             raise
     
-    def send_callback(self, task_number: str, status: str, message: str = '', 
-                     file_url: str = '', extra_data: Dict = None) -> Dict[str, Any]:
+    def send_callback(self, task_id: str = None, task_type: int = 2, status: str = '', 
+                     message: str = '', data: Dict = None, 
+                     # 兼容旧参数
+                     task_number: str = None, file_url: str = '', extra_data: Dict = None) -> Dict[str, Any]:
         """
-        发送回调通知
+        发送回调通知 - 支持新旧两种格式
         
-        Args:
-            task_number (str): 任务编号
-            status (str): 任务状态 (processing/completed/failed)
+        新格式参数:
+            task_id (str): 任务ID
+            task_type (int): 任务类型（2=音频降噪）
+            status (str): 任务状态 (processing/success/failed)
             message (str): 状态消息
+            data (Dict): 回调数据
+            
+        旧格式参数（兼容性）:
+            task_number (str): 任务编号
             file_url (str): 处理后的文件URL
             extra_data (Dict): 额外数据
             
@@ -88,21 +93,37 @@ class APIClient:
             Dict[str, Any]: 回调结果
         """
         try:
-            # 准备回调数据
-            callback_data = {
-                'task_number': task_number,
-                'node_type': 'clear_node',
-                'status': status,
-                'message': message,
-                'file_url': file_url,
-                'timestamp': self._get_timestamp()
-            }
-            
-            # 添加额外数据
-            if extra_data:
-                callback_data.update(extra_data)
-            
-            logger.info(f"发送回调通知: {task_number} - {status}")
+            # 优先使用新格式
+            if task_id and task_type:
+                # 新格式回调
+                callback_data = {
+                    'task_id': task_id,
+                    'task_type': task_type,
+                    'status': status,
+                    'message': message,
+                    'data': data or {},
+                    'timestamp': self._get_timestamp(),
+                    'node_type': 'clear_node'
+                }
+                
+                logger.info(f"发送新格式回调通知: 任务ID={task_id}, 类型={task_type}, 状态={status}")
+                
+            else:
+                # 旧格式回调（兼容性）
+                callback_data = {
+                    'task_number': task_number,
+                    'node_type': 'clear_node',
+                    'status': status,
+                    'message': message,
+                    'file_url': file_url,
+                    'timestamp': self._get_timestamp()
+                }
+                
+                # 添加额外数据
+                if extra_data:
+                    callback_data.update(extra_data)
+                
+                logger.info(f"发送旧格式回调通知: 任务编号={task_number}, 状态={status}")
             
             # 发送请求
             response = self.session.post(
@@ -126,7 +147,7 @@ class APIClient:
             logger.error(f"发送回调失败: {e}")
             raise
     
-    def download_file(self, file_url: str, local_path: str) -> str:
+    def download_file(self, file_url: str, local_path: str) -> bool:
         """
         下载文件
         
@@ -135,7 +156,7 @@ class APIClient:
             local_path (str): 本地保存路径
             
         Returns:
-            str: 本地文件路径
+            bool: 下载是否成功
         """
         try:
             logger.info(f"开始下载文件: {file_url} -> {local_path}")
@@ -157,15 +178,16 @@ class APIClient:
             if not os.path.exists(local_path) or os.path.getsize(local_path) == 0:
                 raise Exception("下载的文件为空或不存在")
             
-            logger.info(f"文件下载成功: {local_path}")
-            return local_path
+            file_size = os.path.getsize(local_path)
+            logger.info(f"文件下载成功: {local_path}, 大小: {file_size} bytes")
+            return True
             
         except requests.exceptions.RequestException as e:
             logger.error(f"下载文件网络错误: {e}")
-            raise
+            return False
         except Exception as e:
             logger.error(f"下载文件失败: {e}")
-            raise
+            return False
     
     def get_task_info(self, task_number: str) -> Dict[str, Any]:
         """

@@ -11,6 +11,65 @@ use app\constants\QueueConstants;
 /**
  * 队列控制器
  * 用于处理队列任务，和接受任务回调
+ * 
+ * =============================================================================
+ * MQ消息数据结构说明 (新版本 - 传递完整TaskInfo数据)
+ * =============================================================================
+ * 
+ * 📋 消息统一格式：
+ * {
+ *   "task_info": {
+ *     "id": 123,                    // TaskInfo主键ID
+ *     "tid": 45,                    // 关联的Task ID
+ *     "filename": "test.mp4",       // 原始文件名
+ *     "url": "http://...",          // 原始文件URL
+ *     "voice_url": "http://...",    // 提取音频后的URL
+ *     "clear_url": "http://...",    // 降噪后的URL
+ *     "type": 2,                    // 文件类型：1=音频，2=视频
+ *     "is_extract": 1,              // 是否已提取：1=是，2=否
+ *     "is_clear": 1,                // 是否已降噪：1=是，2=否
+ *     "fast_status": 1,             // 快速识别状态：1=已完成，2=未完成
+ *     "transcribe_status": 1,       // 转写状态：1=已完成，2=未完成
+ *     "step": 3,                    // 当前处理步骤
+ *     "error_msg": "",              // 错误信息
+ *     "retry_count": 0,             // 重试次数
+ *     // ... 其他字段
+ *   },
+ *   "task_flow": 1,                 // 任务流程：1=快速识别，2=完整转写（仅extract时有）
+ *   "processing_type": "extract"    // 处理类型标识
+ * }
+ * 
+ * 🎯 各节点使用的URL字段：
+ * 
+ * 1️⃣ cut_node (音频提取节点)：
+ *    - 使用：task_info.url (原始文件URL)
+ *    - 处理：从视频中提取音频
+ *    - 回调：更新voice_url字段
+ * 
+ * 2️⃣ clear_node (音频降噪节点)：
+ *    - 使用：task_info.voice_url (提取后的音频URL)
+ *    - 注意：如果是音频文件，voice_url = url
+ *    - 处理：对音频进行降噪处理
+ *    - 回调：更新clear_url字段
+ * 
+ * 3️⃣ quick_node (快速识别节点)：
+ *    - 使用：task_info.clear_url (降噪后的音频URL)
+ *    - 处理：快速语音识别
+ *    - 回调：更新fast_status=1
+ * 
+ * 4️⃣ translate_node (文本转写节点)：
+ *    - 使用：task_info.clear_url (降噪后的音频URL)
+ *    - 处理：完整文本转写
+ *    - 回调：更新transcribe_status=1，text_info等字段
+ * 
+ * 🔄 工作流程：
+ * 原始文件(url) → 音频提取(voice_url) → 音频降噪(clear_url) → 识别/转写
+ * 
+ * 💡 优势：
+ * - 减少节点的数据库查询
+ * - 提供完整的上下文信息
+ * - 支持复杂的业务逻辑判断
+ * - 便于节点进行状态验证和错误处理
  */
 class QueueController
 {
@@ -99,15 +158,24 @@ class QueueController
      * 状态流转：
      * STEP_UPLOADED(0) → STEP_EXTRACTING(1)
      * 
-     * 队列数据格式：
+     * 队列数据格式（传递完整TaskInfo数据）：
      * {
-     *   'task_id': 任务详情ID,
-     *   'task_url': 原始文件URL
+     *   'task_info': {
+     *     'id': 任务详情ID,
+     *     'tid': 任务ID,
+     *     'filename': '原始文件名',
+     *     'url': '原始文件URL',    // cut_node使用此URL
+     *     'voice_url': '',        // 待更新
+     *     'clear_url': '',        // 待更新
+     *     'type': 文件类型,
+     *     'step': 当前步骤,
+     *     // ... 其他完整字段
+     *   }
      * }
      * 
      * @param mixed $taskInfoItem 任务详情对象（TaskInfo模型实例）
      *   - id: 任务详情ID
-     *   - url: 原始文件URL
+     *   - url: 原始文件URL（cut_node将使用此URL）
      *   - is_extract: 是否已提取音频（1=是，2=否）
      * @param int $taskFlow 任务流程类型
      *   - TASK_FLOW_FAST(1): 快速识别流程
@@ -130,10 +198,13 @@ class QueueController
         //判断任务文件是否已经提取
         //是 =1 否 =2
         if ($taskInfoItem->is_extract == QueueConstants::STATUS_NO) {
+            // 传递完整的TaskInfo数据，包含所有字段信息
             $publishData = [
-                'task_id' => $taskInfoItem->id,
-                'task_url' => $taskInfoItem->url,
+                'task_info' => $taskInfoItem->toArray(), // 完整的TaskInfo数据
+                'task_flow' => $taskFlow, // 任务流程类型
+                'processing_type' => 'extract', // 处理类型标识
             ];
+            
             //推送到提取音频队列
             try {
                 $rabbitMQ = new RabbitMQ();
@@ -280,7 +351,7 @@ class QueueController
      * 功能说明：
      * 1. 根据不同的任务类型执行相应的成功处理逻辑
      * 2. 更新任务状态和相关数据字段
-     * 3. 自动触发工作流程的下一个步骤
+     * 3. 先保存字段更新，再触发工作流程的下一个步骤
      * 4. 清空错误信息，标记任务处理正常
      * 
      * 任务类型处理逻辑：
@@ -327,45 +398,54 @@ class QueueController
      */
     private function handleTaskSuccess($taskInfo, $taskType, $data)
     {
+        // 清空错误信息
+        $taskInfo->error_msg = '';
+        
         switch ($taskType) {
             case QueueConstants::TASK_TYPE_EXTRACT:
-                // 音频提取完成
+                // 音频提取完成 - 更新字段并保存
                 $taskInfo->is_extract = QueueConstants::STATUS_YES;
                 $taskInfo->voice_url = $data['voice_url'] ?? '';
                 $taskInfo->step = QueueConstants::STEP_EXTRACT_COMPLETED;
+                $taskInfo->save(); // 先保存字段更新
+                
                 // 自动推送到音频降噪队列
                 $this->pushToAudioClearQueue($taskInfo);
                 break;
                 
             case QueueConstants::TASK_TYPE_CONVERT:
-                // 音频降噪完成
+                // 音频降噪完成 - 更新字段并保存
                 $taskInfo->is_clear = QueueConstants::STATUS_YES;
                 $taskInfo->clear_url = $data['clear_url'] ?? '';
                 $taskInfo->step = QueueConstants::STEP_CLEAR_COMPLETED;
+                $taskInfo->save(); // 先保存字段更新
+                
                 // 根据用户选择的流程进行下一步
                 $this->processNextStepAfterClear($taskInfo);
                 break;
                 
             case QueueConstants::TASK_TYPE_FAST_RECOGNITION:
-                // 快速识别完成
+                // 快速识别完成 - 更新字段并保存
                 $taskInfo->fast_status = QueueConstants::STATUS_YES;
                 $taskInfo->step = QueueConstants::STEP_FAST_COMPLETED;
-                // 等待用户选择是否进行转写
+                $taskInfo->save(); // 保存字段更新
+                
+                // 等待用户选择是否进行转写，无需自动触发下一步
                 break;
                 
             case QueueConstants::TASK_TYPE_TEXT_CONVERT:
-                // 文本转写完成
+                // 文本转写完成 - 更新字段并保存
                 $taskInfo->transcribe_status = QueueConstants::STATUS_YES;
                 $taskInfo->text_info = $data['text_info'] ?? '';
                 $taskInfo->effective_voice = $data['effective_voice'] ?? '';
                 $taskInfo->total_voice = $data['total_voice'] ?? '';
                 $taskInfo->language = $data['language'] ?? '';
                 $taskInfo->step = QueueConstants::STEP_ALL_COMPLETED;
+                $taskInfo->save(); // 保存字段更新
+                
+                // 任务完成，无需后续操作
                 break;
         }
-
-        $taskInfo->error_msg = '';
-        $taskInfo->save();
     }
 
     /**
@@ -412,24 +492,22 @@ class QueueController
      * 
      * 功能说明：
      * 1. 音频提取完成后自动调用，无需用户手动触发
-     * 2. 将提取后的音频文件推送到降噪处理队列
-     * 3. 更新任务状态为"正在音频降噪"
-     * 4. 提供完整的异常处理机制
+     * 2. 重新从数据库查询最新的TaskInfo数据，确保数据完整性
+     * 3. 将提取后的音频文件推送到降噪处理队列
+     * 4. 更新任务状态为"正在音频降噪"
+     * 5. 提供完整的异常处理机制
      * 
-     * 队列数据包含：
-     * - task_id: 任务详情ID，用于回调时定位任务
-     * - task_url: 提取后的音频文件URL（voice_url）
+     * 队列数据包含完整TaskInfo信息：
+     * - clear_node将使用voice_url（提取后的音频URL）进行降噪处理
+     * - 如果是音频文件，voice_url就是原始url
+     * - 如果是视频文件，voice_url是提取后的音频文件URL
      * 
      * 状态流转：
      * STEP_EXTRACT_COMPLETED(2) → STEP_CLEARING(3)
      * 
-     * 错误处理：
-     * - RabbitMQ连接失败：记录错误，状态设为FAILED
-     * - 数据库更新失败：记录错误信息和重试次数
-     * 
      * @param mixed $taskInfo 任务详情对象（TaskInfo模型实例）
      *   - id: 任务详情ID
-     *   - voice_url: 提取后的音频文件URL
+     *   - voice_url: 提取后的音频文件URL（clear_node使用）
      * 
      * @return void
      * 
@@ -440,18 +518,25 @@ class QueueController
      */
     private function pushToAudioClearQueue($taskInfo)
     {
-        $publishData = [
-            'task_id' => $taskInfo->id,
-            'task_url' => $taskInfo->voice_url, // 使用提取后的音频URL
-        ];
-
         try {
+            // 重新从数据库查询最新的TaskInfo数据，确保获取最新状态
+            $latestTaskInfo = TaskInfo::find($taskInfo->id);
+            if (!$latestTaskInfo) {
+                throw new \Exception('任务详情不存在：' . $taskInfo->id);
+            }
+            
+            // 传递最新的完整TaskInfo数据
+            $publishData = [
+                'task_info' => $latestTaskInfo->toArray(), // 最新的完整TaskInfo数据
+                'processing_type' => 'clear', // 处理类型标识
+            ];
+
             $rabbitMQ = new RabbitMQ();
             $rabbitMQ->publishMessage(QueueConstants::QUEUE_AUDIO_CLEAR, $publishData);
             
             // 更新任务状态为正在降噪
-            $taskInfo->step = QueueConstants::STEP_CLEARING;
-            $taskInfo->save();
+            $latestTaskInfo->step = QueueConstants::STEP_CLEARING;
+            $latestTaskInfo->save();
             
         } catch (\Exception $e) {
             // 记录错误信息
@@ -526,30 +611,25 @@ class QueueController
      * 
      * 功能说明：
      * 1. 音频降噪完成后，快速识别流程的处理方法
-     * 2. 将降噪后的音频文件推送到快速识别队列
-     * 3. 更新任务状态为"正在快速识别"
-     * 4. 提供完整的异常处理和错误记录
+     * 2. 重新从数据库查询最新的TaskInfo数据，确保数据完整性
+     * 3. 将降噪后的音频文件推送到快速识别队列
+     * 4. 更新任务状态为"正在快速识别"
+     * 5. 提供完整的异常处理和错误记录
      * 
      * 业务价值：
      * - 快速获得语音识别结果，满足用户的即时需求
      * - 相比完整转写，处理速度更快，资源消耗更少
      * - 为用户提供预览功能，决定是否继续完整转写
      * 
-     * 队列数据包含：
-     * - task_id: 任务详情ID，用于回调时定位任务
-     * - task_url: 降噪后的音频文件URL（clear_url）
+     * 队列数据包含完整TaskInfo信息：
+     * - quick_node将使用clear_url（降噪后的音频URL）进行快速识别
      * 
      * 状态流转：
      * STEP_CLEAR_COMPLETED(4) → STEP_FAST_RECOGNIZING(5)
      * 
-     * 后续流程：
-     * - 快速识别完成后状态变为STEP_FAST_COMPLETED(6)
-     * - 等待用户选择是否继续转写
-     * - 用户可调用continueToTranscribe()继续完整转写
-     * 
      * @param mixed $taskInfo 任务详情对象（TaskInfo模型实例）
      *   - id: 任务详情ID
-     *   - clear_url: 降噪后的音频文件URL
+     *   - clear_url: 降噪后的音频文件URL（quick_node使用）
      * 
      * @return void
      * 
@@ -560,18 +640,25 @@ class QueueController
      */
     private function pushToFastRecognitionQueue($taskInfo)
     {
-        $publishData = [
-            'task_id' => $taskInfo->id,
-            'task_url' => $taskInfo->clear_url, // 使用降噪后的音频URL
-        ];
-
         try {
+            // 重新从数据库查询最新的TaskInfo数据，确保获取最新状态
+            $latestTaskInfo = TaskInfo::find($taskInfo->id);
+            if (!$latestTaskInfo) {
+                throw new \Exception('任务详情不存在：' . $taskInfo->id);
+            }
+            
+            // 传递最新的完整TaskInfo数据
+            $publishData = [
+                'task_info' => $latestTaskInfo->toArray(), // 最新的完整TaskInfo数据
+                'processing_type' => 'fast_recognition', // 处理类型标识
+            ];
+
             $rabbitMQ = new RabbitMQ();
             $rabbitMQ->publishMessage(QueueConstants::QUEUE_FAST_PROCESS, $publishData);
             
             // 更新任务状态为正在快速识别
-            $taskInfo->step = QueueConstants::STEP_FAST_RECOGNIZING;
-            $taskInfo->save();
+            $latestTaskInfo->step = QueueConstants::STEP_FAST_RECOGNIZING;
+            $latestTaskInfo->save();
             
         } catch (\Exception $e) {
             $taskInfo->error_msg = $e->getMessage();
@@ -585,38 +672,21 @@ class QueueController
      * 推送到文本转写队列 - 完整转写流程的最终处理方法
      * 
      * 功能说明：
-     * 1. 将降噪后的音频文件推送到文本转写队列
-     * 2. 支持两种调用场景：完整流程直接转写、快速识别后继续转写
-     * 3. 更新任务状态为"正在文本转写"
-     * 4. 提供完整的异常处理和错误记录
+     * 1. 重新从数据库查询最新的TaskInfo数据，确保数据完整性
+     * 2. 将降噪后的音频文件推送到文本转写队列
+     * 3. 支持两种调用场景：完整流程直接转写、快速识别后继续转写
+     * 4. 更新任务状态为"正在文本转写"
+     * 5. 提供完整的异常处理和错误记录
      * 
-     * 调用场景：
-     * 
-     * 场景1 - 完整流程直接转写：
-     * - 用户选择完整转写流程（TASK_FLOW_FULL）
-     * - 音频降噪完成后直接调用此方法
-     * - 状态流转：STEP_CLEAR_COMPLETED(4) → STEP_TRANSCRIBING(7)
-     * 
-     * 场景2 - 快速识别后继续转写：
-     * - 用户先选择快速识别，后决定继续转写
-     * - 通过continueToTranscribe()方法调用
-     * - 状态流转：STEP_FAST_COMPLETED(6) → STEP_TRANSCRIBING(7)
-     * 
-     * 业务价值：
-     * - 提供高质量的完整文本转写服务
-     * - 包含更详细的语音识别信息（时长、语言等）
-     * - 转写完成后任务流程结束
-     * 
-     * 队列数据包含：
-     * - task_id: 任务详情ID，用于回调时定位任务
-     * - task_url: 降噪后的音频文件URL（clear_url）
+     * 队列数据包含完整TaskInfo信息：
+     * - translate_node将使用clear_url（降噪后的音频URL）进行文本转写
      * 
      * 状态流转：
      * STEP_TRANSCRIBING(7) → STEP_ALL_COMPLETED(8)
      * 
      * @param mixed $taskInfo 任务详情对象（TaskInfo模型实例）
      *   - id: 任务详情ID
-     *   - clear_url: 降噪后的音频文件URL
+     *   - clear_url: 降噪后的音频文件URL（translate_node使用）
      * 
      * @return void
      * 
@@ -627,18 +697,25 @@ class QueueController
      */
     private function pushToTranscribeQueue($taskInfo)
     {
-        $publishData = [
-            'task_id' => $taskInfo->id,
-            'task_url' => $taskInfo->clear_url, // 使用降噪后的音频URL
-        ];
-
         try {
+            // 重新从数据库查询最新的TaskInfo数据，确保获取最新状态
+            $latestTaskInfo = TaskInfo::find($taskInfo->id);
+            if (!$latestTaskInfo) {
+                throw new \Exception('任务详情不存在：' . $taskInfo->id);
+            }
+            
+            // 传递最新的完整TaskInfo数据
+            $publishData = [
+                'task_info' => $latestTaskInfo->toArray(), // 最新的完整TaskInfo数据
+                'processing_type' => 'transcribe', // 处理类型标识
+            ];
+
             $rabbitMQ = new RabbitMQ();
             $rabbitMQ->publishMessage(QueueConstants::QUEUE_TRANSCRIBE, $publishData);
             
             // 更新任务状态为正在转写
-            $taskInfo->step = QueueConstants::STEP_TRANSCRIBING;
-            $taskInfo->save();
+            $latestTaskInfo->step = QueueConstants::STEP_TRANSCRIBING;
+            $latestTaskInfo->save();
             
         } catch (\Exception $e) {
             $taskInfo->error_msg = $e->getMessage();
