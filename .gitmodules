@@ -4,6 +4,6 @@
 [submodule "translate_node/whisperX"]
 	path = translate_node/whisperX
 	url = https://github.com/m-bain/whisperX.git
-[submodule "AiVoice/AI-voice"]
-	path = AiVoice/AI-voice
+[submodule "AiVoice/newAIvoice"]
+	path = AiVoice/newAIvoice
 	url = https://github.com/linchunyan123/newAIvoice
