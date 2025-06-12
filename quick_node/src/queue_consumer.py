@@ -10,6 +10,14 @@ from pathlib import Path
 from loguru import logger
 from concurrent.futures import ThreadPoolExecutor
 import sys
+
+# 添加本地FunASR路径
+current_dir = os.path.dirname(__file__)
+funasr_path = os.path.join(os.path.dirname(current_dir), 'FunASR')
+if os.path.exists(funasr_path):
+    sys.path.insert(0, funasr_path)
+
+# 添加项目根目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from config import Config
 from vad_analyzer import VADAnalyzer

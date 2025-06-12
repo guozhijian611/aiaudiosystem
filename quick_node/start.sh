@@ -42,15 +42,25 @@ else
     pip3 install -r requirements-full.txt
 fi
 
-# 安装本地FunASR
+# 检查并安装本地FunASR
 if [ -d "FunASR" ] && [ -f "FunASR/setup.py" ]; then
-    echo "安装本地FunASR..."
-    cd FunASR
-    pip3 install -e .
-    cd ..
-    echo "本地FunASR安装完成"
+    echo "检查本地FunASR安装状态..."
+    
+    # 检查是否已经安装
+    if python3 -c "import funasr; print('FunASR已安装')" 2>/dev/null; then
+        echo "✅ 本地FunASR已安装"
+    else
+        echo "安装本地FunASR..."
+        cd FunASR
+        pip3 install -e .
+        cd ..
+        echo "✅ 本地FunASR安装完成"
+    fi
 else
-    echo "警告: 未找到本地FunASR目录，请确保FunASR目录存在"
+    echo "❌ 警告: 未找到本地FunASR目录"
+    echo "请确保FunASR目录存在且包含setup.py文件"
+    echo "当前目录内容:"
+    ls -la | grep -E "(FunASR|funasr)"
 fi
 
 # 启动服务
