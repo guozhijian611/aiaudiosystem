@@ -1,0 +1,14 @@
+name: funasr  
+channels:  
+  - pytorch  
+  - conda-forge  
+  - defaults  
+dependencies:  
+  - python>=3.8  
+  - pytorch>=1.13  
+  - torchaudio  
+  - pip  
+  - pip:  
+    - funasr  
+    - modelscope  
+    - huggingface_hub 
