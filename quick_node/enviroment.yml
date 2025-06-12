@@ -7,8 +7,15 @@ dependencies:
   - python>=3.8  
   - pytorch>=1.13  
   - torchaudio  
+  - sentencepiece  # 从 conda-forge 安装预编译版本  
+  - scipy>=1.4.1  
+  - librosa  
+  - pyyaml>=5.1.2    
+  - numpy  
   - pip  
   - pip:  
-    - funasr  
+    - soundfile>=0.12.1
+    - kaldiio>=2.17.0  
     - modelscope  
-    - huggingface_hub 
+    - jieba  
+    - tqdm
