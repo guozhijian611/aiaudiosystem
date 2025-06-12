@@ -40,6 +40,7 @@ class VADAnalyzer:
                 model_revision=self.config.VAD_MODEL_REVISION,  # 使用配置中的模型版本
                 cache_dir=self.config.MODEL_CACHE_DIR,  # 使用本地缓存目录
                 disable_update=self.config.DISABLE_UPDATE,  # 禁用自动更新
+                # disable_update=True,  # 禁用自动更新
             )
             
             logger.info(f"VAD模型初始化成功 - 模型: {self.config.VAD_MODEL} (版本: {self.config.VAD_MODEL_REVISION})")
