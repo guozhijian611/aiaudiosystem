@@ -45,8 +45,12 @@ class QueueConsumer:
     
     def _setup_logging(self):
         """设置日志配置"""
+        # 创建logs目录
+        log_dir = "./logs"
+        os.makedirs(log_dir, exist_ok=True)
+        
         logger.add(
-            self.config.LOG_FILE,
+            os.path.join(log_dir, "quick_node.log"),
             rotation="10 MB",
             retention="7 days",
             level=self.config.LOG_LEVEL,
@@ -56,7 +60,7 @@ class QueueConsumer:
         logger.info("=" * 50)
         logger.info("快速识别节点启动")
         logger.info(f"VAD模型: {self.config.VAD_MODEL}")
-        logger.info(f"队列名称: {self.config.QUEUE_FAST_PROCESS}")
+        logger.info(f"队列名称: {self.config.QUEUE_NAME}")
         logger.info(f"API回调地址: {self.config.API_CALLBACK_URL}")
     
     def _connect_rabbitmq(self):
