@@ -25,7 +25,7 @@ class Config:
     # ==================== API配置 ====================
     API_BASE_URL = os.getenv('API_BASE_URL', 'http://10.0.0.130:8787')
     API_UPLOAD_ENDPOINT = os.getenv('API_UPLOAD_ENDPOINT', '/queue/upload')
-    API_CALLBACK_ENDPOINT = os.getenv('API_CALLBACK_ENDPOINT', '/queue/handleTaskCallback')
+    API_CALLBACK_ENDPOINT = os.getenv('API_CALLBACK_ENDPOINT', '/queue/callback')
     API_CALLBACK_URL = f"{API_BASE_URL}{API_CALLBACK_ENDPOINT}"
     
     # ==================== VAD模型配置 ====================

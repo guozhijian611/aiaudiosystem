@@ -86,6 +86,13 @@ class VADAnalyzer:
                 batch_size_s=300  # VAD模型使用batch_size_s参数，单位为秒
             )
             
+            # 调试：打印VAD原始结果
+            logger.info(f"VAD原始结果: {vad_result}")
+            logger.info(f"VAD结果类型: {type(vad_result)}")
+            if vad_result and len(vad_result) > 0:
+                logger.info(f"VAD结果第一项: {vad_result[0]}")
+                logger.info(f"VAD结果第一项键: {vad_result[0].keys() if isinstance(vad_result[0], dict) else 'Not a dict'}")
+            
             # 解析VAD结果
             analysis_result = self._parse_vad_result(vad_result, total_duration, file_info)
             
