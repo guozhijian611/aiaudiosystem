@@ -33,14 +33,16 @@ class VADAnalyzer:
         try:
             logger.info("正在初始化FunASR VAD模型...")
             
-            # 初始化VAD模型（使用本地缓存和禁用更新）
+            # 初始化VAD模型（单独使用VAD功能）
+            # 对于单独的VAD任务，直接使用fsmn-vad模型
             self.vad_model = AutoModel(
-                model="fsmn-vad",  # 直接使用fsmn-vad模型
+                model=self.config.VAD_MODEL,  # 使用配置中的VAD模型 (默认: fsmn-vad)
+                model_revision=self.config.VAD_MODEL_REVISION,  # 使用配置中的模型版本
                 cache_dir=self.config.MODEL_CACHE_DIR,  # 使用本地缓存目录
                 disable_update=self.config.DISABLE_UPDATE,  # 禁用自动更新
             )
             
-            logger.info("VAD模型初始化成功 - 模型: fsmn-vad")
+            logger.info(f"VAD模型初始化成功 - 模型: {self.config.VAD_MODEL} (版本: {self.config.VAD_MODEL_REVISION})")
             
         except Exception as e:
             logger.error(f"VAD模型初始化失败: {e}")

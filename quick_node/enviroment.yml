@@ -13,7 +13,7 @@ dependencies:
   - pyyaml>=5.1.2  # FunASR配置文件解析  
   - numpy  
   - pip  
-    - pip:
+  - pip:  
     - soundfile>=0.12.1    # 音频文件读写
     - kaldiio>=2.17.0      # FunASR特有依赖
     - modelscope           # 模型下载
