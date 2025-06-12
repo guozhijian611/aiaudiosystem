@@ -61,7 +61,7 @@ class Config:
     @classmethod
     def validate_config(cls):
         """验证配置有效性"""
-        required_dirs = [cls.TEMP_DIR, cls.WORK_DIR, cls.MODEL_CACHE_DIR, os.path.dirname(cls.LOG_FILE)]
+        required_dirs = [cls.TEMP_DIR, cls.WORK_DIR, cls.MODEL_CACHE_DIR]
         for dir_path in required_dirs:
             if dir_path and not os.path.exists(dir_path):
                 os.makedirs(dir_path, exist_ok=True)

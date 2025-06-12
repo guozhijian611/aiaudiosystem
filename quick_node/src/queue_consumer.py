@@ -79,12 +79,22 @@ class QueueConsumer:
             self.connection = pika.BlockingConnection(parameters)
             self.channel = self.connection.channel()
             
-            # 声明队列（匹配现有队列的TTL参数）
+            # 声明队列（与其他节点保持一致的配置）
+            queue_arguments = {
+                'x-message-ttl': self.config.QUEUE_TTL,  # 消息TTL
+                'x-max-priority': 10,      # 支持优先级
+                'x-dead-letter-exchange': 'task_dlx',
+                'x-dead-letter-routing-key': 'dead_letter'
+            }
+            
             self.channel.queue_declare(
                 queue=self.config.QUEUE_NAME, 
                 durable=self.config.QUEUE_DURABLE,
-                arguments={'x-message-ttl': self.config.QUEUE_TTL}
+                arguments=queue_arguments
             )
+            
+            # 设置预取数量（一次只处理一个任务）
+            self.channel.basic_qos(prefetch_count=1)
             
             logger.info(f"成功连接到RabbitMQ: {self.config.RABBITMQ_HOST}:{self.config.RABBITMQ_PORT}")
             
@@ -98,7 +108,6 @@ class QueueConsumer:
             logger.info("开始消费队列消息...")
             
             # 设置消费者
-            self.channel.basic_qos(prefetch_count=self.config.MAX_WORKERS)
             self.channel.basic_consume(
                 queue=self.config.QUEUE_NAME,
                 on_message_callback=self.process_message,
