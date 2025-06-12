@@ -1,0 +1,23 @@
+# Quick Node 特有依赖
+# 注意：如果使用conda环境，请先安装environment.yml，再安装此文件
+
+# 队列和消息处理
+pika>=1.3.0
+
+# HTTP请求和API通信
+requests>=2.28.0
+
+# 环境变量管理
+python-dotenv>=0.19.0
+
+# 日志处理
+loguru>=0.6.0
+
+# 如果不使用conda环境，需要以下基础依赖：
+# funasr>=1.0.0
+# torch>=1.13.0
+# torchaudio>=0.13.0
+# librosa>=0.9.0
+# numpy>=1.21.0
+# soundfile>=0.12.0
+# modelscope>=1.8.0 
