@@ -17,8 +17,10 @@ class Config:
     RABBITMQ_PASSWORD = os.getenv('RABBITMQ_PASSWORD', 'guest')
     RABBITMQ_VHOST = os.getenv('RABBITMQ_VHOST', '/')
     
-    # 队列名称
-    QUEUE_FAST_PROCESS = 'fast_process_queue'
+    # 队列名称和配置
+    QUEUE_FAST_PROCESS = os.getenv('QUEUE_FAST_PROCESS', 'fast_process_queue')
+    QUEUE_TTL = int(os.getenv('QUEUE_TTL', 3600000))  # 队列消息TTL (毫秒)
+    QUEUE_DURABLE = os.getenv('QUEUE_DURABLE', 'true').lower() == 'true'
     
     # ==================== API配置 ====================
     API_BASE_URL = os.getenv('API_BASE_URL', 'http://10.0.0.130:8787')
@@ -33,6 +35,10 @@ class Config:
     VAD_MAX_END_SILENCE_TIME = int(os.getenv('VAD_MAX_END_SILENCE_TIME', 800))  # 最大结束静音时间(ms)
     VAD_MAX_START_SILENCE_TIME = int(os.getenv('VAD_MAX_START_SILENCE_TIME', 3000))  # 最大开始静音时间(ms)
     VAD_MIN_SPEECH_DURATION = int(os.getenv('VAD_MIN_SPEECH_DURATION', 250))  # 最小语音持续时间(ms)
+    
+    # 模型缓存配置
+    MODEL_CACHE_DIR = os.getenv('MODEL_CACHE_DIR', './models')
+    DISABLE_UPDATE = os.getenv('DISABLE_UPDATE', 'true').lower() == 'true'
     
     # ==================== 文件处理配置 ====================
     TEMP_DIR = os.getenv('TEMP_DIR', './temp')
@@ -53,7 +59,7 @@ class Config:
     @classmethod
     def validate_config(cls):
         """验证配置有效性"""
-        required_dirs = [cls.TEMP_DIR, cls.WORK_DIR, os.path.dirname(cls.LOG_FILE)]
+        required_dirs = [cls.TEMP_DIR, cls.WORK_DIR, cls.MODEL_CACHE_DIR, os.path.dirname(cls.LOG_FILE)]
         for dir_path in required_dirs:
             if dir_path and not os.path.exists(dir_path):
                 os.makedirs(dir_path, exist_ok=True)

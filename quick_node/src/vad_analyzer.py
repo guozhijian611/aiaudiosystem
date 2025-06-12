@@ -33,10 +33,12 @@ class VADAnalyzer:
         try:
             logger.info("正在初始化FunASR VAD模型...")
             
-            # 初始化VAD模型
+            # 初始化VAD模型（使用本地缓存和禁用更新）
             self.vad_model = AutoModel(
                 model=self.config.VAD_MODEL,
                 model_revision=self.config.VAD_MODEL_REVISION,
+                cache_dir=self.config.MODEL_CACHE_DIR,  # 使用本地缓存目录
+                disable_update=self.config.DISABLE_UPDATE,  # 禁用自动更新
                 vad_model="fsmn-vad",
                 vad_kwargs={
                     "max_end_silence_time": self.config.VAD_MAX_END_SILENCE_TIME,

@@ -79,8 +79,12 @@ class QueueConsumer:
             self.connection = pika.BlockingConnection(parameters)
             self.channel = self.connection.channel()
             
-            # 声明队列
-            self.channel.queue_declare(queue=self.config.QUEUE_FAST_PROCESS, durable=True)
+            # 声明队列（匹配现有队列的TTL参数）
+            self.channel.queue_declare(
+                queue=self.config.QUEUE_FAST_PROCESS, 
+                durable=self.config.QUEUE_DURABLE,
+                arguments={'x-message-ttl': self.config.QUEUE_TTL}
+            )
             
             logger.info(f"成功连接到RabbitMQ: {self.config.RABBITMQ_HOST}:{self.config.RABBITMQ_PORT}")
             
