@@ -2,7 +2,7 @@
 # 适用于非conda环境的完整安装
 
 # FunASR 核心
-funasr>=1.0.0
+# 注意：使用本地FunASR目录，不从pip安装funasr包
 
 # PyTorch 生态
 torch>=1.13.0

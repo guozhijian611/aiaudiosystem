@@ -7,15 +7,16 @@ dependencies:
   - python>=3.8  
   - pytorch>=1.13  
   - torchaudio  
-  - sentencepiece  # 从 conda-forge 安装预编译版本  
-  - scipy>=1.4.1  
-  - librosa  
-  - pyyaml>=5.1.2    
+  - sentencepiece  # FunASR核心依赖  
+  - scipy>=1.4.1   # FunASR核心依赖  
+  - librosa        # 音频处理核心库  
+  - pyyaml>=5.1.2  # FunASR配置文件解析  
   - numpy  
   - pip  
   - pip:  
-    - soundfile>=0.12.1
-    - kaldiio>=2.17.0  
-    - modelscope  
-    - jieba  
-    - tqdm
+    - soundfile>=0.12.1    # 音频文件读写  
+    - kaldiio>=2.17.0      # FunASR特有依赖  
+    - modelscope           # 模型下载  
+    - jieba                # 中文分词（FunASR用）  
+    - tqdm                 # 进度条  
+    # 注意：funasr使用本地FunASR目录，不从pip安装

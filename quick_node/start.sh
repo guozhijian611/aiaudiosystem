@@ -42,6 +42,17 @@ else
     pip3 install -r requirements-full.txt
 fi
 
+# 安装本地FunASR
+if [ -d "FunASR" ] && [ -f "FunASR/setup.py" ]; then
+    echo "安装本地FunASR..."
+    cd FunASR
+    pip3 install -e .
+    cd ..
+    echo "本地FunASR安装完成"
+else
+    echo "警告: 未找到本地FunASR目录，请确保FunASR目录存在"
+fi
+
 # 启动服务
 echo "启动 Quick Node 服务..."
 python3 run.py 

@@ -9,6 +9,13 @@ from loguru import logger
 from funasr import AutoModel
 import sys
 import os
+
+# 添加本地FunASR路径
+current_dir = os.path.dirname(__file__)
+funasr_path = os.path.join(os.path.dirname(current_dir), 'FunASR')
+if os.path.exists(funasr_path):
+    sys.path.insert(0, funasr_path)
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from config import Config
 
