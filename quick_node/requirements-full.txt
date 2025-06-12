@@ -25,6 +25,11 @@ tqdm
 # 配置和数据
 pyyaml>=5.1.2
 kaldiio>=2.17.0
+omegaconf            # 配置管理
+torch_complex        # 复数张量支持
+hydra-core           # 配置框架
+onnxruntime          # ONNX运行时
+typeguard            # 类型检查
 
 # Quick Node 特有依赖
 pika>=1.3.0              # RabbitMQ客户端

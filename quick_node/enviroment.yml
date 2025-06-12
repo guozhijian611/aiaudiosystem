@@ -13,10 +13,15 @@ dependencies:
   - pyyaml>=5.1.2  # FunASR配置文件解析  
   - numpy  
   - pip  
-  - pip:  
-    - soundfile>=0.12.1    # 音频文件读写  
-    - kaldiio>=2.17.0      # FunASR特有依赖  
-    - modelscope           # 模型下载  
-    - jieba                # 中文分词（FunASR用）  
-    - tqdm                 # 进度条  
+    - pip:
+    - soundfile>=0.12.1    # 音频文件读写
+    - kaldiio>=2.17.0      # FunASR特有依赖
+    - modelscope           # 模型下载
+    - jieba                # 中文分词（FunASR用）
+    - tqdm                 # 进度条
+    - omegaconf            # 配置管理（FunASR依赖）
+    - torch_complex        # 复数张量支持（FunASR依赖）
+    - hydra-core           # 配置框架（FunASR依赖）
+    - onnxruntime          # ONNX运行时（FunASR依赖）
+    - typeguard            # 类型检查（FunASR依赖）
     # 注意：funasr使用本地FunASR目录，不从pip安装
