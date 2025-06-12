@@ -36,7 +36,8 @@ class APIClient:
                 'task_id': task_id,
                 'task_type': task_type,
                 'status': status,
-                'data': data or {}
+                'data': data or {},
+                'node_type': 'quick_node'
             }
             
             logger.info(f"发送回调通知: 任务ID={task_id}, 类型={task_type}, 状态={status}")
@@ -44,21 +45,31 @@ class APIClient:
             response = self.session.post(
                 self.config.API_CALLBACK_URL,
                 json=callback_data,
-                headers={'Content-Type': 'application/json'}
+                headers={'Content-Type': 'application/json'},
+                timeout=30
             )
             
             response.raise_for_status()
             result = response.json()
+            
+            # 检查业务层面的响应状态
+            if result.get('code') == 401:
+                logger.warning(f"回调认证失败，但继续处理: {result}")
+                return result  # 不抛出异常，认证问题不影响业务流程
+            elif result.get('code') != 200 and result.get('code') is not None:
+                logger.warning(f"回调业务错误: {result}")
+                return result  # 记录但不中断处理
             
             logger.info(f"回调通知发送成功: {result}")
             return result
             
         except requests.exceptions.RequestException as e:
             logger.error(f"发送回调通知失败: {e}")
-            raise
+            # 回调失败不应该中断任务处理
+            return {'code': 500, 'msg': f'回调网络错误: {str(e)}'}
         except Exception as e:
             logger.error(f"回调处理异常: {e}")
-            raise
+            return {'code': 500, 'msg': f'回调处理异常: {str(e)}'}
     
     def send_processing_callback(self, task_id: int) -> dict:
         """发送处理中回调"""

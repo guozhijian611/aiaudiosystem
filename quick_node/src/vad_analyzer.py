@@ -35,19 +35,12 @@ class VADAnalyzer:
             
             # 初始化VAD模型（使用本地缓存和禁用更新）
             self.vad_model = AutoModel(
-                model=self.config.VAD_MODEL,
-                model_revision=self.config.VAD_MODEL_REVISION,
+                model="fsmn-vad",  # 直接使用fsmn-vad模型
                 cache_dir=self.config.MODEL_CACHE_DIR,  # 使用本地缓存目录
                 disable_update=self.config.DISABLE_UPDATE,  # 禁用自动更新
-                vad_model="fsmn-vad",
-                vad_kwargs={
-                    "max_end_silence_time": self.config.VAD_MAX_END_SILENCE_TIME,
-                    "max_start_silence_time": self.config.VAD_MAX_START_SILENCE_TIME,
-                    "min_speech_duration": self.config.VAD_MIN_SPEECH_DURATION,
-                }
             )
             
-            logger.info(f"VAD模型初始化成功 - 模型: {self.config.VAD_MODEL}")
+            logger.info("VAD模型初始化成功 - 模型: fsmn-vad")
             
         except Exception as e:
             logger.error(f"VAD模型初始化失败: {e}")
@@ -85,7 +78,10 @@ class VADAnalyzer:
             logger.info(f"音频基本信息: 时长={total_duration:.2f}秒, 采样率={file_info['sample_rate']}Hz")
             
             # 使用VAD模型进行语音活动检测
-            vad_result = self.vad_model.generate(input=audio_path)
+            vad_result = self.vad_model.generate(
+                input=audio_path,
+                batch_size_s=300  # VAD模型使用batch_size_s参数，单位为秒
+            )
             
             # 解析VAD结果
             analysis_result = self._parse_vad_result(vad_result, total_duration, file_info)
