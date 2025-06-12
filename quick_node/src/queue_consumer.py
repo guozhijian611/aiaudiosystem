@@ -63,14 +63,14 @@ class QueueConsumer:
         """连接RabbitMQ"""
         try:
             credentials = pika.PlainCredentials(
-                self.config.RABBITMQ_USER,
+                self.config.RABBITMQ_USERNAME,
                 self.config.RABBITMQ_PASSWORD
             )
             
             parameters = pika.ConnectionParameters(
                 host=self.config.RABBITMQ_HOST,
                 port=self.config.RABBITMQ_PORT,
-                virtual_host=self.config.RABBITMQ_VHOST,
+                virtual_host=self.config.RABBITMQ_VIRTUAL_HOST,
                 credentials=credentials,
                 heartbeat=600,
                 blocked_connection_timeout=300
@@ -81,7 +81,7 @@ class QueueConsumer:
             
             # 声明队列（匹配现有队列的TTL参数）
             self.channel.queue_declare(
-                queue=self.config.QUEUE_FAST_PROCESS, 
+                queue=self.config.QUEUE_NAME, 
                 durable=self.config.QUEUE_DURABLE,
                 arguments={'x-message-ttl': self.config.QUEUE_TTL}
             )
@@ -100,12 +100,12 @@ class QueueConsumer:
             # 设置消费者
             self.channel.basic_qos(prefetch_count=self.config.MAX_WORKERS)
             self.channel.basic_consume(
-                queue=self.config.QUEUE_FAST_PROCESS,
+                queue=self.config.QUEUE_NAME,
                 on_message_callback=self.process_message,
                 auto_ack=False
             )
             
-            logger.info(f"开始监听队列: {self.config.QUEUE_FAST_PROCESS}")
+            logger.info(f"开始监听队列: {self.config.QUEUE_NAME}")
             self.channel.start_consuming()
             
         except KeyboardInterrupt:
@@ -253,7 +253,7 @@ class QueueConsumer:
             'service': 'quick_node',
             'status': 'running',
             'vad_model': self.vad_analyzer.get_model_info(),
-            'queue': self.config.QUEUE_FAST_PROCESS,
+            'queue': self.config.QUEUE_NAME,
             'rabbitmq_host': self.config.RABBITMQ_HOST,
             'api_callback_url': self.config.API_CALLBACK_URL
         }

@@ -13,18 +13,20 @@ class Config:
     # ==================== RabbitMQ配置 ====================
     RABBITMQ_HOST = os.getenv('RABBITMQ_HOST', '10.0.0.130')
     RABBITMQ_PORT = int(os.getenv('RABBITMQ_PORT', 5672))
-    RABBITMQ_USER = os.getenv('RABBITMQ_USER', 'guest')
+    RABBITMQ_USERNAME = os.getenv('RABBITMQ_USERNAME', 'guest')
     RABBITMQ_PASSWORD = os.getenv('RABBITMQ_PASSWORD', 'guest')
-    RABBITMQ_VHOST = os.getenv('RABBITMQ_VHOST', '/')
+    RABBITMQ_VIRTUAL_HOST = os.getenv('RABBITMQ_VIRTUAL_HOST', '/')
     
     # 队列名称和配置
-    QUEUE_FAST_PROCESS = os.getenv('QUEUE_FAST_PROCESS', 'fast_process_queue')
+    QUEUE_NAME = os.getenv('QUEUE_NAME', 'fast_process_queue')
     QUEUE_TTL = int(os.getenv('QUEUE_TTL', 3600000))  # 队列消息TTL (毫秒)
     QUEUE_DURABLE = os.getenv('QUEUE_DURABLE', 'true').lower() == 'true'
     
     # ==================== API配置 ====================
     API_BASE_URL = os.getenv('API_BASE_URL', 'http://10.0.0.130:8787')
-    API_CALLBACK_URL = f"{API_BASE_URL}/queue/handleTaskCallback"
+    API_UPLOAD_ENDPOINT = os.getenv('API_UPLOAD_ENDPOINT', '/queue/upload')
+    API_CALLBACK_ENDPOINT = os.getenv('API_CALLBACK_ENDPOINT', '/queue/handleTaskCallback')
+    API_CALLBACK_URL = f"{API_BASE_URL}{API_CALLBACK_ENDPOINT}"
     
     # ==================== VAD模型配置 ====================
     # 使用FunASR的VAD模型
@@ -40,21 +42,21 @@ class Config:
     MODEL_CACHE_DIR = os.getenv('MODEL_CACHE_DIR', './models')
     DISABLE_UPDATE = os.getenv('DISABLE_UPDATE', 'true').lower() == 'true'
     
-    # ==================== 文件处理配置 ====================
-    TEMP_DIR = os.getenv('TEMP_DIR', './temp')
+    # ==================== 工作目录配置 ====================
     WORK_DIR = os.getenv('WORK_DIR', './work')
+    TEMP_DIR = os.getenv('TEMP_DIR', './temp')
+    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
     
     # 支持的音频格式
     SUPPORTED_AUDIO_FORMATS = ['.wav', '.mp3', '.flac', '.aac', '.ogg', '.m4a']
-    
-    # ==================== 日志配置 ====================
-    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
-    LOG_FILE = os.getenv('LOG_FILE', './logs/quick_node.log')
     
     # ==================== 其他配置 ====================
     MAX_WORKERS = int(os.getenv('MAX_WORKERS', 2))  # 最大并发处理数
     DOWNLOAD_TIMEOUT = int(os.getenv('DOWNLOAD_TIMEOUT', 300))  # 下载超时时间(秒)
     PROCESS_TIMEOUT = int(os.getenv('PROCESS_TIMEOUT', 600))  # 处理超时时间(秒)
+    
+    # ==================== FunASR模型路径配置 ====================
+    FUNASR_PATH = os.getenv('FUNASR_PATH', './FunASR')
     
     @classmethod
     def validate_config(cls):
