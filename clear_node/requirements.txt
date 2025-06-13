@@ -2,6 +2,7 @@
 pika==1.3.2
 requests==2.31.0
 python-dotenv==1.0.0
+psutil==5.9.8
 
 # 注意：以下依赖已在environment.yml中定义，这里仅作为备注
 # 已在environment.yml中的依赖:

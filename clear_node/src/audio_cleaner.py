@@ -25,6 +25,10 @@ class AudioCleaner:
             if clearvoice_path not in sys.path:
                 sys.path.insert(0, clearvoice_path)
             
+            # 检测计算设备
+            device_info = self._detect_compute_device()
+            logger.info(f"计算设备检测: {device_info}")
+            
             # 导入ClearVoice
             from clearvoice import ClearVoice
             
@@ -34,11 +38,103 @@ class AudioCleaner:
                 model_names=[self.config.CLEAR_MODEL]
             )
             
+            # 获取模型实际使用的设备
+            actual_device = self._get_model_device()
+            
             logger.info(f"ClearVoice初始化成功 - 模型: {self.config.CLEAR_MODEL}, 任务: {self.config.CLEAR_TASK}")
+            logger.info(f"模型运行设备: {actual_device}")
             
         except Exception as e:
             logger.error(f"ClearVoice初始化失败: {e}")
             raise
+    
+    def _detect_compute_device(self) -> str:
+        """检测可用的计算设备"""
+        try:
+            import torch
+            
+            # 检测CUDA
+            if torch.cuda.is_available():
+                gpu_count = torch.cuda.device_count()
+                gpu_name = torch.cuda.get_device_name(0) if gpu_count > 0 else "Unknown"
+                cuda_version = torch.version.cuda
+                return f"GPU可用 - 设备数量: {gpu_count}, 主GPU: {gpu_name}, CUDA版本: {cuda_version}"
+            
+            # 检测MPS (Apple Silicon)
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                return "MPS可用 - Apple Silicon GPU加速"
+            
+            # CPU only
+            else:
+                cpu_count = torch.get_num_threads()
+                return f"仅CPU可用 - 线程数: {cpu_count}"
+                
+        except ImportError:
+            return "PyTorch未安装，无法检测设备"
+        except Exception as e:
+            return f"设备检测失败: {str(e)}"
+    
+    def _get_model_device(self) -> str:
+        """获取模型实际使用的设备"""
+        try:
+            # 尝试从ClearVoice模型中获取设备信息
+            if hasattr(self.clear_voice, 'model'):
+                model = self.clear_voice.model
+                if hasattr(model, 'device'):
+                    return f"模型设备: {model.device}"
+                elif hasattr(model, 'parameters'):
+                    # 获取第一个参数的设备
+                    for param in model.parameters():
+                        return f"模型设备: {param.device}"
+                        break
+            
+            # 尝试检测PyTorch默认设备
+            import torch
+            if torch.cuda.is_available():
+                current_device = torch.cuda.current_device()
+                device_name = torch.cuda.get_device_name(current_device)
+                return f"当前CUDA设备: cuda:{current_device} ({device_name})"
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                return "当前设备: MPS (Apple Silicon)"
+            else:
+                return "当前设备: CPU"
+                
+        except Exception as e:
+            return f"无法获取模型设备信息: {str(e)}"
+    
+    def _get_current_device_usage(self) -> str:
+        """获取当前设备使用情况"""
+        try:
+            import torch
+            
+            if torch.cuda.is_available():
+                device_id = torch.cuda.current_device()
+                device_name = torch.cuda.get_device_name(device_id)
+                
+                # 获取GPU内存使用情况
+                memory_allocated = torch.cuda.memory_allocated(device_id) / 1024**3  # GB
+                memory_reserved = torch.cuda.memory_reserved(device_id) / 1024**3   # GB
+                memory_total = torch.cuda.get_device_properties(device_id).total_memory / 1024**3  # GB
+                
+                return f"GPU cuda:{device_id} ({device_name}) - 内存: {memory_allocated:.1f}GB/{memory_total:.1f}GB"
+                
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                return "MPS (Apple Silicon GPU)"
+                
+            else:
+                # CPU使用情况
+                import psutil
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+                memory_info = psutil.virtual_memory()
+                memory_used = memory_info.used / 1024**3  # GB
+                memory_total = memory_info.total / 1024**3  # GB
+                
+                return f"CPU - 使用率: {cpu_percent:.1f}%, 内存: {memory_used:.1f}GB/{memory_total:.1f}GB"
+                
+        except ImportError as e:
+            return f"缺少依赖库: {str(e)}"
+        except Exception as e:
+            return f"获取设备使用情况失败: {str(e)}"
     
     def clean_audio(self, input_path: str, output_path: str = None, timeout: int = 3600) -> str:
         """
@@ -121,6 +217,10 @@ class AudioCleaner:
                 logger.info("正在调用ClearVoice模型进行音频降噪...")
                 logger.info("提示: 大文件处理可能需要较长时间，如果长时间无响应可能是内存不足")
                 
+                # 显示当前使用的计算设备
+                current_device = self._get_current_device_usage()
+                logger.info(f"当前计算设备: {current_device}")
+                
                 # 在Windows上需要定期检查超时
                 if is_windows or not hasattr(signal, 'SIGALRM'):
                     # Windows系统的处理方式
@@ -138,6 +238,10 @@ class AudioCleaner:
                 # 记录处理时间
                 process_time = time.time() - start_time
                 logger.info(f"ClearVoice处理完成，实际耗时: {process_time:.1f}秒 ({process_time/60:.1f}分钟)")
+                
+                # 显示处理完成后的设备状态
+                final_device = self._get_current_device_usage()
+                logger.info(f"处理完成后设备状态: {final_device}")
                 
             finally:
                 # 取消超时处理
