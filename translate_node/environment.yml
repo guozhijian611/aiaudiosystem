@@ -1,22 +1,20 @@
-name: whisperx 
-channels:  
-  - pytorch-nightly  
-  - pytorch  
-  - nvidia  
-  - conda-forge  
-  - defaults  
-  
-dependencies:  
-  - python>=3.9,<3.13  
-  - pytorch-nightly  
-  - torchaudio-nightly  
-  - numpy>=2.0.2  
-  - pandas>=2.2.3  
-  - nltk>=3.9.1  
-  - transformers>=4.48.0  
-  - pip  
-  - pip:  
-    - ctranslate2>=4.5.0  
-    - faster-whisper>=1.1.1  
-    - onnxruntime==1.19  
-    - pyannote-audio>=3.3.2
+name: whisperx
+channels:
+  - nvidia
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.9,<3.13
+  - numpy>=2.0.2
+  - pandas>=2.2.3
+  - nltk>=3.9.1
+  - transformers>=4.48.0
+  - pip
+  - pip:
+      - torch --index-url https://download.pytorch.org/whl/nightly/cu121
+      - torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+      - ctranslate2>=4.5.0
+      - faster-whisper>=1.1.1
+      - onnxruntime==1.19
+      - pyannote-audio>=3.3.2
