@@ -41,6 +41,11 @@ class Config:
     OUTPUT_FORMAT = os.getenv('OUTPUT_FORMAT', 'wav')  # 输出格式
     SAMPLE_RATE = int(os.getenv('SAMPLE_RATE', 16000))  # 采样率
     
+    # 处理限制配置
+    MAX_AUDIO_DURATION = int(os.getenv('MAX_AUDIO_DURATION', 1800))  # 最大音频时长（秒），默认30分钟
+    PROCESSING_TIMEOUT = int(os.getenv('PROCESSING_TIMEOUT', 3600))  # 处理超时（秒），默认1小时
+    CHUNK_DURATION = int(os.getenv('CHUNK_DURATION', 300))  # 分块处理时长（秒），默认5分钟
+    
     # ClearVoice模型路径配置
     CLEARVOICE_PATH = os.getenv('CLEARVOICE_PATH', './ClearerVoice-Studio/clearvoice')
     

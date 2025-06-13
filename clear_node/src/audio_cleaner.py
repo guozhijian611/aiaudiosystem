@@ -40,13 +40,14 @@ class AudioCleaner:
             logger.error(f"ClearVoice初始化失败: {e}")
             raise
     
-    def clean_audio(self, input_path: str, output_path: str = None) -> str:
+    def clean_audio(self, input_path: str, output_path: str = None, timeout: int = 3600) -> str:
         """
         清理音频文件
         
         Args:
             input_path (str): 输入音频文件路径
             output_path (str, optional): 输出音频文件路径
+            timeout (int): 处理超时时间（秒），默认1小时
             
         Returns:
             str: 清理后的音频文件路径
@@ -54,6 +55,11 @@ class AudioCleaner:
         Raises:
             Exception: 清理失败时抛出异常
         """
+        import signal
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError(f"音频处理超时（超过{timeout}秒）")
+        
         try:
             # 验证输入文件是否存在
             if not os.path.exists(input_path):
@@ -71,9 +77,19 @@ class AudioCleaner:
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
             logger.info(f"开始清理音频: {input_path} -> {output_path}")
+            logger.info(f"设置处理超时: {timeout}秒")
             
-            # 使用ClearVoice处理音频
-            output_wav = self.clear_voice(input_path=input_path, online_write=False)
+            # 设置超时信号
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(timeout)
+            
+            try:
+                # 使用ClearVoice处理音频
+                output_wav = self.clear_voice(input_path=input_path, online_write=False)
+            finally:
+                # 取消超时信号
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
             
             # 写入输出文件
             self.clear_voice.write(output_wav, output_path=output_path)
@@ -207,6 +223,86 @@ class AudioCleaner:
         else:
             return f"{size_bytes / (1024 * 1024 * 1024):.1f} GB"
     
+    def clean_audio_with_chunking(self, input_path: str, output_path: str = None, chunk_duration: int = None) -> str:
+        """
+        分块处理大音频文件
+        
+        Args:
+            input_path (str): 输入音频文件路径
+            output_path (str, optional): 输出音频文件路径
+            chunk_duration (int, optional): 分块时长（秒）
+            
+        Returns:
+            str: 清理后的音频文件路径
+        """
+        try:
+            import librosa
+            import soundfile as sf
+            
+            if chunk_duration is None:
+                chunk_duration = self.config.CHUNK_DURATION
+                
+            logger.info(f"开始分块处理音频: 分块时长={chunk_duration}秒")
+            
+            # 加载音频文件
+            y, sr = librosa.load(input_path, sr=None)
+            total_duration = len(y) / sr
+            chunk_samples = chunk_duration * sr
+            
+            logger.info(f"音频总时长: {total_duration:.2f}秒, 分块大小: {chunk_duration}秒")
+            
+            # 生成输出路径
+            if output_path is None:
+                input_name = Path(input_path).stem
+                output_path = os.path.join(
+                    self.config.WORK_DIR, 
+                    f"{input_name}_cleaned.{self.config.OUTPUT_FORMAT}"
+                )
+            
+                         # 分块处理
+            import numpy as np
+            processed_chunks = []
+            chunk_count = int(np.ceil(len(y) / chunk_samples))
+            
+            for i in range(chunk_count):
+                start_idx = i * chunk_samples
+                end_idx = min((i + 1) * chunk_samples, len(y))
+                chunk_data = y[start_idx:end_idx]
+                
+                # 保存临时块文件
+                chunk_temp_path = f"{input_path}_chunk_{i}.wav"
+                sf.write(chunk_temp_path, chunk_data, sr)
+                
+                # 处理块文件
+                chunk_output_path = f"{output_path}_chunk_{i}.wav"
+                logger.info(f"处理分块 {i+1}/{chunk_count}")
+                
+                cleaned_chunk_path = self.clean_audio(chunk_temp_path, chunk_output_path)
+                
+                # 加载处理后的块
+                cleaned_chunk, _ = librosa.load(cleaned_chunk_path, sr=sr)
+                processed_chunks.append(cleaned_chunk)
+                
+                # 清理临时文件
+                try:
+                    os.remove(chunk_temp_path)
+                    os.remove(cleaned_chunk_path)
+                except:
+                    pass
+            
+            # 合并所有处理后的块
+            final_audio = np.concatenate(processed_chunks)
+            
+            # 保存最终结果
+            sf.write(output_path, final_audio, sr)
+            
+            logger.info(f"分块处理完成: {output_path}")
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"分块处理失败: {e}")
+            raise
+
     def cleanup_temp_files(self, temp_dir: str = None):
         """
         清理临时文件

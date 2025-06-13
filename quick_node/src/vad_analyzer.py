@@ -86,13 +86,6 @@ class VADAnalyzer:
                 batch_size_s=300  # VAD模型使用batch_size_s参数，单位为秒
             )
             
-            # 调试：打印VAD原始结果
-            logger.info(f"VAD原始结果: {vad_result}")
-            logger.info(f"VAD结果类型: {type(vad_result)}")
-            if vad_result and len(vad_result) > 0:
-                logger.info(f"VAD结果第一项: {vad_result[0]}")
-                logger.info(f"VAD结果第一项键: {vad_result[0].keys() if isinstance(vad_result[0], dict) else 'Not a dict'}")
-            
             # 解析VAD结果
             analysis_result = self._parse_vad_result(vad_result, total_duration, file_info)
             
@@ -137,9 +130,30 @@ class VADAnalyzer:
             
             # 解析VAD结果中的语音段落
             if vad_result and len(vad_result) > 0:
-                # FunASR VAD结果格式: [{'text': '', 'timestamp': [[start_ms, end_ms], ...]}]
+                # FunASR VAD结果格式: [{'key': 'filename', 'value': [[start_ms, end_ms], ...]}]
                 for result_item in vad_result:
-                    if 'timestamp' in result_item:
+                    # 检查新格式：'value' 键包含时间戳列表
+                    if 'value' in result_item:
+                        timestamps = result_item['value']
+                        for timestamp in timestamps:
+                            if len(timestamp) >= 2:
+                                start_ms, end_ms = timestamp[0], timestamp[1]
+                                start_sec = start_ms / 1000.0
+                                end_sec = end_ms / 1000.0
+                                duration_sec = end_sec - start_sec
+                                
+                                # 添加语音段落信息
+                                speech_segments.append({
+                                    'start_time': start_sec,
+                                    'end_time': end_sec,
+                                    'duration': duration_sec,
+                                    'start_ms': start_ms,
+                                    'end_ms': end_ms
+                                })
+                                
+                                effective_duration += duration_sec
+                    # 兼容旧格式：'timestamp' 键
+                    elif 'timestamp' in result_item:
                         timestamps = result_item['timestamp']
                         for timestamp in timestamps:
                             if len(timestamp) >= 2:

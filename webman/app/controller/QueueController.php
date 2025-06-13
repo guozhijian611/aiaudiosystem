@@ -224,7 +224,27 @@ class QueueController
                 return $e->getMessage();
             }
         } else if ($taskInfoItem->is_extract == QueueConstants::STATUS_YES) {
-            return true;
+            // 音频文件无需提取，直接进入降噪流程
+            // 设置voice_url为原始URL（音频文件本身）
+            if (empty($taskInfoItem->voice_url)) {
+                $taskInfoItem->voice_url = $taskInfoItem->url;
+                $taskInfoItem->step = QueueConstants::STEP_EXTRACT_COMPLETED;
+                $taskInfoItem->save();
+            }
+            
+            // 直接推送到音频降噪队列
+            try {
+                $this->pushToAudioClearQueue($taskInfoItem);
+                return true;
+            } catch (\Exception $e) {
+                //记录错误信息到数据库
+                $taskInfoItem->error_msg = $e->getMessage();
+                $taskInfoItem->retry_count = $taskInfoItem->retry_count + 1;
+                $taskInfoItem->step = QueueConstants::STEP_FAILED;
+                $taskInfoItem->save();
+                
+                return $e->getMessage();
+            }
         }
         return false;
     }
@@ -427,6 +447,8 @@ class QueueController
             case QueueConstants::TASK_TYPE_FAST_RECOGNITION:
                 // 快速识别完成 - 更新字段并保存
                 $taskInfo->fast_status = QueueConstants::STATUS_YES;
+                $taskInfo->effective_voice = $data['effective_voice'] ?? '';
+                $taskInfo->total_voice = $data['total_voice'] ?? '';
                 $taskInfo->step = QueueConstants::STEP_FAST_COMPLETED;
                 $taskInfo->save(); // 保存字段更新
                 

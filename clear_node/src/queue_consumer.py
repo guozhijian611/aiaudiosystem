@@ -257,11 +257,22 @@ class QueueConsumer:
             output_filename = f"{base_name}_cleared.{self.config.OUTPUT_FORMAT}"
             output_path = os.path.join(work_dir, output_filename)
             
+            # 检查音频时长限制
+            audio_duration = input_info.get('duration', 0)
+            if audio_duration > self.config.MAX_AUDIO_DURATION:
+                logger.warning(f"任务 {task_id}: 音频时长 {audio_duration:.2f}秒 超过限制 {self.config.MAX_AUDIO_DURATION}秒")
+                logger.info(f"任务 {task_id}: 将使用分块处理模式")
+            
             # 执行音频降噪
             logger.info(f"任务 {task_id}: 开始音频降噪处理: {input_path} -> {output_path}")
             logger.info(f"任务 {task_id}: 使用模型: {self.config.CLEAR_MODEL}")
+            logger.info(f"任务 {task_id}: 处理超时设置: {self.config.PROCESSING_TIMEOUT}秒")
             
-            cleaned_path = self.audio_cleaner.clean_audio(input_path, output_path)
+            cleaned_path = self.audio_cleaner.clean_audio(
+                input_path, 
+                output_path, 
+                timeout=self.config.PROCESSING_TIMEOUT
+            )
             
             # 验证输出文件
             if not os.path.exists(cleaned_path) or os.path.getsize(cleaned_path) == 0:

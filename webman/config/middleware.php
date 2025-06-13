@@ -12,12 +12,11 @@
  * @license   http://www.opensource.org/licenses/mit-license.php MIT License
  */
 
- use app\middleware\Cross;
-
+use app\middleware\Cross;
+use app\middleware\Auth;
 return [
     '' => [
         Cross::class,
-        app\middleware\Auth::class,
-       
+        Auth::class,
     ],
 ];

@@ -48,7 +48,6 @@ class Cross implements MiddlewareInterface
             $response->withHeader('Access-Control-Allow-Origin', '*')
                      ->withHeader('Access-Control-Allow-Credentials', 'false');
         }
-
         return $response;
     }
 }
