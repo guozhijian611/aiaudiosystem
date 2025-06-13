@@ -56,9 +56,16 @@ class AudioCleaner:
             Exception: 清理失败时抛出异常
         """
         import signal
+        import threading
+        import platform
         
-        def timeout_handler(signum, frame):
-            raise TimeoutError(f"音频处理超时（超过{timeout}秒）")
+        # 检查是否为Windows系统
+        is_windows = platform.system().lower() == 'windows'
+        timeout_occurred = threading.Event()
+        
+        def timeout_handler():
+            """超时处理函数"""
+            timeout_occurred.set()
         
         try:
             # 验证输入文件是否存在
@@ -76,7 +83,7 @@ class AudioCleaner:
             # 确保输出目录存在
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            logger.info(f"开始清理音频: {input_path} -> {output_path}")
+            logger.info(f"开始降噪音频: {input_path} -> {output_path}")
             logger.info(f"设置处理超时: {timeout}秒")
             
             # 获取音频信息用于估算处理时间
@@ -91,29 +98,54 @@ class AudioCleaner:
             logger.info(f"预估处理时间: {estimated_time:.1f}秒 ({estimated_time/60:.1f}分钟)")
             logger.info("注意: ClearVoice处理过程中不显示进度，请耐心等待...")
             
-            # 设置超时信号
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(timeout)
-            
             # 记录开始时间
             import time
             start_time = time.time()
+            
+            # 设置超时处理
+            timer = None
+            if not is_windows and hasattr(signal, 'SIGALRM'):
+                # Unix/Linux系统使用信号
+                def signal_timeout_handler(signum, frame):
+                    raise TimeoutError(f"音频处理超时（超过{timeout}秒）")
+                
+                old_handler = signal.signal(signal.SIGALRM, signal_timeout_handler)
+                signal.alarm(timeout)
+            else:
+                # Windows系统使用定时器
+                timer = threading.Timer(timeout, timeout_handler)
+                timer.start()
             
             try:
                 # 使用ClearVoice处理音频
                 logger.info("正在调用ClearVoice模型进行音频降噪...")
                 logger.info("提示: 大文件处理可能需要较长时间，如果长时间无响应可能是内存不足")
                 
-                output_wav = self.clear_voice(input_path=input_path, online_write=False)
+                # 在Windows上需要定期检查超时
+                if is_windows or not hasattr(signal, 'SIGALRM'):
+                    # Windows系统的处理方式
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(self.clear_voice, input_path=input_path, online_write=False)
+                        try:
+                            output_wav = future.result(timeout=timeout)
+                        except concurrent.futures.TimeoutError:
+                            raise TimeoutError(f"音频处理超时（超过{timeout}秒）")
+                else:
+                    # Unix/Linux系统的处理方式
+                    output_wav = self.clear_voice(input_path=input_path, online_write=False)
                 
                 # 记录处理时间
                 process_time = time.time() - start_time
                 logger.info(f"ClearVoice处理完成，实际耗时: {process_time:.1f}秒 ({process_time/60:.1f}分钟)")
                 
             finally:
-                # 取消超时信号
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
+                # 取消超时处理
+                if not is_windows and hasattr(signal, 'SIGALRM'):
+                    signal.alarm(0)
+                    signal.signal(signal.SIGALRM, old_handler)
+                elif timer:
+                    timer.cancel()
             
             # 写入输出文件
             self.clear_voice.write(output_wav, output_path=output_path)
@@ -301,7 +333,9 @@ class AudioCleaner:
                 chunk_output_path = f"{output_path}_chunk_{i}.wav"
                 logger.info(f"处理分块 {i+1}/{chunk_count}")
                 
-                cleaned_chunk_path = self.clean_audio(chunk_temp_path, chunk_output_path)
+                # 为分块设置较短的超时时间（分块时长 * 10）
+                chunk_timeout = max(chunk_duration * 10, 300)  # 最少5分钟
+                cleaned_chunk_path = self.clean_audio(chunk_temp_path, chunk_output_path, timeout=chunk_timeout)
                 
                 # 加载处理后的块
                 cleaned_chunk, _ = librosa.load(cleaned_chunk_path, sr=sr)
