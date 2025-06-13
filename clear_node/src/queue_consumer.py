@@ -259,20 +259,32 @@ class QueueConsumer:
             
             # 检查音频时长限制
             audio_duration = input_info.get('duration', 0)
-            if audio_duration > self.config.MAX_AUDIO_DURATION:
+            use_chunking = audio_duration > self.config.MAX_AUDIO_DURATION
+            
+            if use_chunking:
                 logger.warning(f"任务 {task_id}: 音频时长 {audio_duration:.2f}秒 超过限制 {self.config.MAX_AUDIO_DURATION}秒")
-                logger.info(f"任务 {task_id}: 将使用分块处理模式")
+                logger.info(f"任务 {task_id}: 将使用分块处理模式 (分块时长: {self.config.CHUNK_DURATION}秒)")
             
             # 执行音频降噪
             logger.info(f"任务 {task_id}: 开始音频降噪处理: {input_path} -> {output_path}")
             logger.info(f"任务 {task_id}: 使用模型: {self.config.CLEAR_MODEL}")
+            logger.info(f"任务 {task_id}: 处理模式: {'分块处理' if use_chunking else '整体处理'}")
             logger.info(f"任务 {task_id}: 处理超时设置: {self.config.PROCESSING_TIMEOUT}秒")
             
-            cleaned_path = self.audio_cleaner.clean_audio(
-                input_path, 
-                output_path, 
-                timeout=self.config.PROCESSING_TIMEOUT
-            )
+            if use_chunking:
+                # 使用分块处理
+                cleaned_path = self.audio_cleaner.clean_audio_with_chunking(
+                    input_path, 
+                    output_path, 
+                    chunk_duration=self.config.CHUNK_DURATION
+                )
+            else:
+                # 使用整体处理
+                cleaned_path = self.audio_cleaner.clean_audio(
+                    input_path, 
+                    output_path, 
+                    timeout=self.config.PROCESSING_TIMEOUT
+                )
             
             # 验证输出文件
             if not os.path.exists(cleaned_path) or os.path.getsize(cleaned_path) == 0:

@@ -79,13 +79,37 @@ class AudioCleaner:
             logger.info(f"开始清理音频: {input_path} -> {output_path}")
             logger.info(f"设置处理超时: {timeout}秒")
             
+            # 获取音频信息用于估算处理时间
+            audio_info = self.get_audio_info(input_path)
+            duration = audio_info.get('duration', 0)
+            file_size_mb = audio_info.get('file_size_mb', 0)
+            
+            # 估算处理时间（经验值：约为音频时长的0.1-0.3倍）
+            estimated_time = duration * 0.2  # 估算20%的处理时间
+            logger.info(f"音频时长: {duration:.1f}秒 ({duration/60:.1f}分钟)")
+            logger.info(f"文件大小: {file_size_mb:.1f}MB")
+            logger.info(f"预估处理时间: {estimated_time:.1f}秒 ({estimated_time/60:.1f}分钟)")
+            logger.info("注意: ClearVoice处理过程中不显示进度，请耐心等待...")
+            
             # 设置超时信号
             old_handler = signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(timeout)
             
+            # 记录开始时间
+            import time
+            start_time = time.time()
+            
             try:
                 # 使用ClearVoice处理音频
+                logger.info("正在调用ClearVoice模型进行音频降噪...")
+                logger.info("提示: 大文件处理可能需要较长时间，如果长时间无响应可能是内存不足")
+                
                 output_wav = self.clear_voice(input_path=input_path, online_write=False)
+                
+                # 记录处理时间
+                process_time = time.time() - start_time
+                logger.info(f"ClearVoice处理完成，实际耗时: {process_time:.1f}秒 ({process_time/60:.1f}分钟)")
+                
             finally:
                 # 取消超时信号
                 signal.alarm(0)
