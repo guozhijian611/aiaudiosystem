@@ -1,0 +1,16 @@
+# 基础依赖 (environment.yml中没有的)
+pika==1.3.2
+requests==2.31.0
+python-dotenv==1.0.0
+psutil==5.9.8
+loguru==0.7.2
+
+# WhisperX特有依赖
+whisperx==3.1.1
+
+# 注意：以下依赖已在environment.yml中定义，这里仅作为备注
+# 已在environment.yml中的依赖:
+# - torch, torchaudio (nightly版本)
+# - numpy, pandas, nltk, transformers
+# - ctranslate2, faster-whisper, onnxruntime
+# - pyannote-audio (用于说话人分离) 

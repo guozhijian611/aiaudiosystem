@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  translate_node:
+    build: .
+    container_name: translate_node
+    restart: unless-stopped
+    
+    # 环境变量
+    environment:
+      - RABBITMQ_HOST=10.0.0.130
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USERNAME=admin
+      - RABBITMQ_PASSWORD=admin
+      - API_BASE_URL=http://10.0.0.130:8787
+      - QUEUE_NAME=text_transcribe_queue
+      - WHISPER_MODEL=large-v3
+      - WHISPER_DEVICE=auto
+      - ENABLE_DIARIZATION=true
+      - ENABLE_ALIGNMENT=true
+      - LOG_LEVEL=INFO
+    
+    # 数据卷
+    volumes:
+      - ./work:/app/work
+      - ./temp:/app/temp
+      - ./logs:/app/logs
+      - ./models:/app/models
+    
+    # GPU支持（如果可用）
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    
+    # 网络
+    networks:
+      - ai_audio_network
+
+networks:
+  ai_audio_network:
+    external: true 
