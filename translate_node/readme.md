@@ -76,6 +76,16 @@ mkdir -p work temp logs models
 
 ### 3. 配置环境变量
 
+复制并编辑环境变量文件：
+
+```bash
+# 复制模板文件
+cp .env.example .env
+
+# 编辑配置
+nano .env  # 或使用其他编辑器
+```
+
 编辑 `.env` 文件：
 
 ```bash
