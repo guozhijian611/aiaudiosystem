@@ -39,7 +39,7 @@ class Config:
     WHISPER_LANGUAGE = os.getenv('WHISPER_LANGUAGE', 'auto')  # 自动检测语言
     WHISPER_DEVICE = os.getenv('WHISPER_DEVICE', 'auto')  # 自动选择设备
     WHISPER_BATCH_SIZE = int(os.getenv('WHISPER_BATCH_SIZE', 16))  # 批处理大小
-    WHISPER_COMPUTE_TYPE = os.getenv('WHISPER_COMPUTE_TYPE', 'float16')  # 计算精度
+    WHISPER_COMPUTE_TYPE = os.getenv('WHISPER_COMPUTE_TYPE', 'auto')  # 计算精度，auto为自动选择
     
     # 说话人分离配置
     ENABLE_DIARIZATION = os.getenv('ENABLE_DIARIZATION', 'true').lower() == 'true'

@@ -55,6 +55,12 @@ Route::group('/queue', function () {
     // 队列任务管理接口
     Route::post('/push', [QueueController::class, 'pushTaskToQueue']);
     
+    // 单独推送任务接口
+    Route::post('/push-single', [QueueController::class, 'pushSingleTask']);
+    
+    // 批量推送任务接口
+    Route::post('/push-batch', [QueueController::class, 'pushBatchTasks']);
+    
     // 队列任务回调接口（供节点调用）
     Route::post('/callback', [QueueController::class, 'handleTaskCallback']);
     

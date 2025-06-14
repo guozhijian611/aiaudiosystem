@@ -48,12 +48,16 @@ class WhisperXTranscriber:
             device = self._get_device()
             logger.info(f"使用计算设备: {device}")
             
+            # 智能选择计算类型
+            compute_type = self._get_optimal_compute_type(device)
+            logger.info(f"选择计算类型: {compute_type}")
+            
             # 初始化转写模型
             logger.info(f"正在加载Whisper模型: {self.config.WHISPER_MODEL}")
             self.model = whisperx.load_model(
                 self.config.WHISPER_MODEL, 
                 device, 
-                compute_type=self.config.WHISPER_COMPUTE_TYPE,
+                compute_type=compute_type,
                 language=self.config.WHISPER_LANGUAGE if self.config.WHISPER_LANGUAGE != 'auto' else None
             )
             
@@ -79,7 +83,7 @@ class WhisperXTranscriber:
             
             logger.info(f"WhisperX初始化成功")
             logger.info(f"转写模型: {self.config.WHISPER_MODEL}")
-            logger.info(f"计算精度: {self.config.WHISPER_COMPUTE_TYPE}")
+            logger.info(f"计算精度: {compute_type}")
             logger.info(f"语言设置: {self.config.WHISPER_LANGUAGE}")
             logger.info(f"对齐模型: {'启用' if self.config.ENABLE_ALIGNMENT else '禁用'}")
             logger.info(f"说话人分离: {'启用' if self.config.ENABLE_DIARIZATION else '禁用'}")
@@ -392,4 +396,69 @@ class WhisperXTranscriber:
             'diarization_enabled': self.config.ENABLE_DIARIZATION,
             'alignment_model': self.config.ALIGNMENT_MODEL if self.config.ENABLE_ALIGNMENT else None,
             'diarization_model': self.config.DIARIZATION_MODEL if self.config.ENABLE_DIARIZATION else None
-        } 
+        }
+    
+    def _get_optimal_compute_type(self, device: str) -> str:
+        """智能选择最优计算类型"""
+        try:
+            # 如果配置明确指定了计算类型且不是auto，先尝试使用配置的类型
+            if self.config.WHISPER_COMPUTE_TYPE != 'auto':
+                config_compute_type = self.config.WHISPER_COMPUTE_TYPE
+                
+                # 测试配置的计算类型是否可用
+                if self._test_compute_type(device, config_compute_type):
+                    logger.info(f"使用配置的计算类型: {config_compute_type}")
+                    return config_compute_type
+                else:
+                    logger.warning(f"配置的计算类型 {config_compute_type} 不支持，将自动选择")
+            
+            # 自动选择最优计算类型
+            if device == 'cpu':
+                logger.info("CPU设备，使用 float32")
+                return 'float32'
+            
+            # GPU设备，按优先级测试
+            compute_types = ['float16', 'float32', 'int8']
+            
+            for compute_type in compute_types:
+                if self._test_compute_type(device, compute_type):
+                    logger.info(f"自动选择计算类型: {compute_type}")
+                    return compute_type
+            
+            # 如果都不支持，回退到float32
+            logger.warning("所有计算类型测试失败，回退到 float32")
+            return 'float32'
+            
+        except Exception as e:
+            logger.error(f"计算类型选择失败: {e}，使用默认 float32")
+            return 'float32'
+    
+    def _test_compute_type(self, device: str, compute_type: str) -> bool:
+        """测试指定的计算类型是否支持"""
+        try:
+            logger.info(f"测试计算类型: {compute_type} (设备: {device})")
+            
+            # 导入必要的库
+            from faster_whisper import WhisperModel
+            
+            # 尝试创建一个小模型来测试
+            test_model = WhisperModel(
+                "tiny",  # 使用最小的模型进行测试
+                device=device,
+                compute_type=compute_type
+            )
+            
+            # 如果创建成功，清理模型并返回True
+            del test_model
+            logger.info(f"计算类型 {compute_type} 测试通过")
+            return True
+            
+        except ValueError as e:
+            if "float16 compute type" in str(e):
+                logger.warning(f"计算类型 {compute_type} 不支持: {e}")
+            else:
+                logger.warning(f"计算类型 {compute_type} 测试失败: {e}")
+            return False
+        except Exception as e:
+            logger.warning(f"计算类型 {compute_type} 测试异常: {e}")
+            return False 

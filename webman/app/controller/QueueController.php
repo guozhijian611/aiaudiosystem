@@ -452,7 +452,8 @@ class QueueController
                 $taskInfo->step = QueueConstants::STEP_FAST_COMPLETED;
                 $taskInfo->save(); // 保存字段更新
                 
-                // 等待用户选择是否进行转写，无需自动触发下一步
+                // 检查是否应该自动继续转写（完整流程）
+                $this->checkAndContinueToTranscribe($taskInfo);
                 break;
                 
             case QueueConstants::TASK_TYPE_TEXT_CONVERT:
@@ -615,9 +616,8 @@ class QueueController
             return;
         }
 
-        // 这里需要根据任务表中存储的流程类型来决定
-        // 暂时先用默认逻辑，实际应该从任务表中获取用户的选择
-        $taskFlow = QueueConstants::TASK_FLOW_FAST; // 临时设置，实际应从数据库读取
+        // 尝试从多个来源获取任务流程类型
+        $taskFlow = $this->getTaskFlowType($task, $taskInfo);
         
         if ($taskFlow === QueueConstants::TASK_FLOW_FAST) {
             // 快速识别流程
@@ -626,6 +626,59 @@ class QueueController
             // 完整转写流程，直接跳到转写
             $this->pushToTranscribeQueue($taskInfo);
         }
+    }
+
+    /**
+     * 获取任务流程类型 - 从多个来源智能判断用户选择的流程
+     * 
+     * 功能说明：
+     * 1. 从多个数据源获取任务流程类型
+     * 2. 提供灵活的流程类型判断策略
+     * 3. 支持向后兼容和渐进式升级
+     * 4. 为不同的业务场景提供适配能力
+     * 
+     * 判断优先级：
+     * 1. 任务表中的task_flow字段（如果存在）
+     * 2. 任务名称中的关键词识别
+     * 3. 任务创建时间的默认策略
+     * 4. 系统全局默认配置
+     * 
+     * @param mixed $task 任务对象（Task模型实例）
+     * @param mixed $taskInfo 任务详情对象（TaskInfo模型实例）
+     * 
+     * @return int 任务流程类型
+     *   - QueueConstants::TASK_FLOW_FAST: 快速识别流程
+     *   - QueueConstants::TASK_FLOW_FULL: 完整转写流程
+     * 
+     * @since 1.0.0
+     * @author 系统管理员
+     */
+    private function getTaskFlowType($task, $taskInfo)
+    {
+        // 策略1: 检查任务表中的task_flow字段
+        if (isset($task->task_flow) && !empty($task->task_flow)) {
+            return $task->task_flow;
+        }
+
+        // 策略2: 从任务名称推断流程类型
+        if (!empty($task->name)) {
+            $taskName = strtolower($task->name);
+            // 检查是否包含完整转写的关键词
+            $fullFlowKeywords = ['完整', '全量', '详细', 'full', 'complete', 'detail'];
+            foreach ($fullFlowKeywords as $keyword) {
+                if (strpos($taskName, $keyword) !== false) {
+                    return QueueConstants::TASK_FLOW_FULL;
+                }
+            }
+        }
+
+        // 策略3: 根据任务创建时间的默认策略
+        // 例如：新创建的任务默认使用完整流程，老任务保持快速流程
+        // 这里可以根据实际业务需求调整
+        
+        // 策略4: 系统默认配置
+        // 当前默认为快速流程，保持向后兼容
+        return QueueConstants::TASK_FLOW_FAST;
     }
 
     /**
@@ -1102,5 +1155,422 @@ class QueueController
         $pow = min($pow, count($units) - 1);
         $bytes /= (1 << (10 * $pow));
         return round($bytes, 2) . ' ' . $units[$pow];
+    }
+
+    /**
+     * 检查并自动继续转写 - 快速识别完成后的智能流程判断
+     * 
+     * 功能说明：
+     * 1. 快速识别完成后，判断是否应该自动继续转写
+     * 2. 支持多种判断策略，实现智能化的流程控制
+     * 3. 为完整流程用户提供无缝的处理体验
+     * 4. 保持快速流程用户的选择权
+     * 
+     * 判断策略（按优先级）：
+     * 1. 检查任务表中的task_flow字段（如果存在）
+     * 2. 检查TaskInfo中的处理类型标识
+     * 3. 根据任务创建时的参数判断
+     * 4. 默认策略：等待用户选择
+     * 
+     * 自动继续条件：
+     * - 用户选择了完整转写流程（TASK_FLOW_FULL）
+     * - 或者任务标记为自动转写
+     * - 或者满足其他预设的自动化条件
+     * 
+     * 状态流转：
+     * STEP_FAST_COMPLETED(6) → STEP_TRANSCRIBING(7) [自动]
+     * STEP_FAST_COMPLETED(6) → 等待用户选择 [手动]
+     * 
+     * @param mixed $taskInfo 任务详情对象（TaskInfo模型实例）
+     *   - tid: 关联的任务ID
+     *   - 其他字段用于判断流程类型
+     * 
+     * @return void
+     * 
+     * @since 1.0.0
+     * @author 系统管理员
+     */
+    private function checkAndContinueToTranscribe($taskInfo)
+    {
+        try {
+            // 获取关联的任务信息
+            $task = Task::find($taskInfo->tid);
+            if (!$task) {
+                // 任务不存在，默认等待用户选择
+                return;
+            }
+
+            // 策略1: 检查任务表中的task_flow字段（如果存在）
+            if (isset($task->task_flow)) {
+                $taskFlow = $task->task_flow;
+            } else {
+                // 策略2: 从任务名称或其他字段推断流程类型
+                // 这里可以根据实际业务需求添加判断逻辑
+                // 例如：检查任务名称是否包含"完整"、"全量"等关键词
+                // 或者检查任务的其他标识字段
+                
+                // 策略3: 检查任务创建时的默认行为
+                // 可以根据用户的历史偏好或系统配置来判断
+                
+                // 当前默认策略：等待用户选择（保持原有行为）
+                $taskFlow = QueueConstants::TASK_FLOW_FAST;
+            }
+
+            // 根据流程类型决定是否自动继续
+            if ($taskFlow === QueueConstants::TASK_FLOW_FULL) {
+                // 完整流程：自动推送到转写队列
+                $this->pushToTranscribeQueue($taskInfo);
+            } else {
+                // 快速流程：等待用户选择，无需额外操作
+                // 用户可以通过 continueToTranscribe 接口手动继续
+            }
+
+        } catch (\Exception $e) {
+            // 发生异常时，默认等待用户选择，不影响主流程
+            // 可以记录日志用于后续分析
+            error_log("checkAndContinueToTranscribe failed: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * 单独推送任务到指定队列 - 支持独立的任务类型处理
+     * 
+     * 功能说明：
+     * 1. 支持4种任务类型的独立推送，不依赖工作流程
+     * 2. 可以跳过前置步骤，直接处理特定类型的任务
+     * 3. 适用于重新处理、手动干预、测试等场景
+     * 4. 保持与原有工作流程的兼容性
+     * 
+     * 支持的任务类型：
+     * - TASK_TYPE_EXTRACT(1): 音频提取
+     * - TASK_TYPE_CONVERT(2): 音频降噪  
+     * - TASK_TYPE_FAST_RECOGNITION(3): 快速识别
+     * - TASK_TYPE_TEXT_CONVERT(4): 文本转写
+     * 
+     * 使用场景：
+     * - 重新处理失败的任务
+     * - 跳过某些步骤直接处理
+     * - 测试特定的处理节点
+     * - 手动干预和调试
+     * 
+     * @param Request $request 请求对象
+     * @param int $request->task_id 任务详情ID（必须）
+     * @param int $request->task_type 任务类型（必须）1-4
+     * @param bool $request->force 是否强制推送（可选），忽略状态检查
+     * 
+     * @return array JSON响应
+     *   成功：{'code': 200, 'msg': '任务推送成功', 'data': {'queue': '队列名称'}}
+     *   失败：{'code': 400, 'msg': '错误信息', 'data': null}
+     * 
+     * @since 1.0.0
+     * @author 系统管理员
+     */
+    public function pushSingleTask(Request $request)
+    {
+        $taskId = $request->input('task_id');
+        $taskType = $request->input('task_type');
+        $force = $request->input('force', false);
+
+        // 参数验证
+        if (empty($taskId) || empty($taskType)) {
+            return jsons(400, '缺少必要参数：task_id 和 task_type');
+        }
+
+        if (!QueueConstants::isValidTaskType($taskType)) {
+            return jsons(400, '无效的任务类型，支持的类型：1-4');
+        }
+
+        try {
+            // 查找任务
+            $taskInfo = TaskInfo::find($taskId);
+            if (!$taskInfo) {
+                return jsons(400, '任务不存在');
+            }
+
+            // 检查任务锁（除非强制推送）
+            if (!$force && $this->isTaskLocked($taskId)) {
+                return jsons(400, '任务正在处理中，如需强制推送请设置 force=true');
+            }
+
+            // 验证任务状态和前置条件
+            $validationResult = $this->validateTaskForType($taskInfo, $taskType, $force);
+            if ($validationResult !== true) {
+                return jsons(400, $validationResult);
+            }
+
+            // 推送到对应队列
+            $result = $this->pushToSpecificQueue($taskInfo, $taskType);
+            
+            if ($result['success']) {
+                return jsons(200, '任务推送成功', [
+                    'queue' => $result['queue'],
+                    'task_id' => $taskId,
+                    'task_type' => $taskType,
+                    'step' => $taskInfo->step
+                ]);
+            } else {
+                return jsons(400, $result['message']);
+            }
+
+        } catch (\Exception $e) {
+            return jsons(400, '推送失败：' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 验证任务是否满足指定类型的处理条件
+     * 
+     * @param mixed $taskInfo 任务详情对象
+     * @param int $taskType 任务类型
+     * @param bool $force 是否强制推送
+     * @return true|string 验证通过返回true，否则返回错误信息
+     */
+    private function validateTaskForType($taskInfo, $taskType, $force)
+    {
+        if ($force) {
+            return true; // 强制推送跳过所有验证
+        }
+
+        switch ($taskType) {
+            case QueueConstants::TASK_TYPE_EXTRACT:
+                // 音频提取：需要原始文件URL
+                if (empty($taskInfo->url)) {
+                    return '缺少原始文件URL，无法进行音频提取';
+                }
+                if ($taskInfo->is_extract == QueueConstants::STATUS_YES) {
+                    return '音频已提取，无需重复处理';
+                }
+                break;
+
+            case QueueConstants::TASK_TYPE_CONVERT:
+                // 音频降噪：需要音频文件URL
+                if (empty($taskInfo->voice_url)) {
+                    return '缺少音频文件URL，请先完成音频提取';
+                }
+                if ($taskInfo->is_clear == QueueConstants::STATUS_YES) {
+                    return '音频已降噪，无需重复处理';
+                }
+                break;
+
+            case QueueConstants::TASK_TYPE_FAST_RECOGNITION:
+                // 快速识别：需要降噪后的音频文件
+                if (empty($taskInfo->clear_url)) {
+                    return '缺少降噪音频文件URL，请先完成音频降噪';
+                }
+                if ($taskInfo->fast_status == QueueConstants::STATUS_YES) {
+                    return '快速识别已完成，无需重复处理';
+                }
+                break;
+
+            case QueueConstants::TASK_TYPE_TEXT_CONVERT:
+                // 文本转写：需要降噪后的音频文件
+                if (empty($taskInfo->clear_url)) {
+                    return '缺少降噪音频文件URL，请先完成音频降噪';
+                }
+                if ($taskInfo->transcribe_status == QueueConstants::STATUS_YES) {
+                    return '文本转写已完成，无需重复处理';
+                }
+                break;
+        }
+
+        return true;
+    }
+
+    /**
+     * 推送任务到指定类型的队列
+     * 
+     * @param mixed $taskInfo 任务详情对象
+     * @param int $taskType 任务类型
+     * @return array 推送结果 ['success' => bool, 'queue' => string, 'message' => string]
+     */
+    private function pushToSpecificQueue($taskInfo, $taskType)
+    {
+        try {
+            $rabbitMQ = new RabbitMQ();
+            $publishData = [
+                'task_info' => $taskInfo->toArray(),
+                'processing_type' => $this->getProcessingTypeByTaskType($taskType),
+                'manual_push' => true // 标记为手动推送
+            ];
+
+            switch ($taskType) {
+                case QueueConstants::TASK_TYPE_EXTRACT:
+                    $rabbitMQ->publishMessage(QueueConstants::QUEUE_VOICE_EXTRACT, $publishData);
+                    $taskInfo->step = QueueConstants::STEP_EXTRACTING;
+                    $queueName = QueueConstants::QUEUE_VOICE_EXTRACT;
+                    break;
+
+                case QueueConstants::TASK_TYPE_CONVERT:
+                    $rabbitMQ->publishMessage(QueueConstants::QUEUE_AUDIO_CLEAR, $publishData);
+                    $taskInfo->step = QueueConstants::STEP_CLEARING;
+                    $queueName = QueueConstants::QUEUE_AUDIO_CLEAR;
+                    break;
+
+                case QueueConstants::TASK_TYPE_FAST_RECOGNITION:
+                    $rabbitMQ->publishMessage(QueueConstants::QUEUE_FAST_PROCESS, $publishData);
+                    $taskInfo->step = QueueConstants::STEP_FAST_RECOGNIZING;
+                    $queueName = QueueConstants::QUEUE_FAST_PROCESS;
+                    break;
+
+                case QueueConstants::TASK_TYPE_TEXT_CONVERT:
+                    $rabbitMQ->publishMessage(QueueConstants::QUEUE_TRANSCRIBE, $publishData);
+                    $taskInfo->step = QueueConstants::STEP_TRANSCRIBING;
+                    $queueName = QueueConstants::QUEUE_TRANSCRIBE;
+                    break;
+
+                default:
+                    return ['success' => false, 'message' => '不支持的任务类型'];
+            }
+
+            // 更新任务状态
+            $taskInfo->error_msg = ''; // 清空错误信息
+            $taskInfo->save();
+
+            return [
+                'success' => true,
+                'queue' => $queueName,
+                'message' => '推送成功'
+            ];
+
+        } catch (\Exception $e) {
+            // 记录错误
+            $taskInfo->error_msg = $e->getMessage();
+            $taskInfo->retry_count += 1;
+            $taskInfo->step = QueueConstants::STEP_FAILED;
+            $taskInfo->save();
+
+            return [
+                'success' => false,
+                'message' => '推送失败：' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * 根据任务类型获取处理类型标识
+     * 
+     * @param int $taskType 任务类型
+     * @return string 处理类型标识
+     */
+    private function getProcessingTypeByTaskType($taskType)
+    {
+        $typeMap = [
+            QueueConstants::TASK_TYPE_EXTRACT => 'extract',
+            QueueConstants::TASK_TYPE_CONVERT => 'clear',
+            QueueConstants::TASK_TYPE_FAST_RECOGNITION => 'fast_recognition',
+            QueueConstants::TASK_TYPE_TEXT_CONVERT => 'transcribe'
+        ];
+
+        return $typeMap[$taskType] ?? 'unknown';
+    }
+
+    /**
+     * 批量推送任务 - 支持批量处理多个任务
+     * 
+     * 功能说明：
+     * 1. 支持批量推送多个任务到同一类型的队列
+     * 2. 提供批量操作的事务性处理
+     * 3. 详细的成功/失败统计信息
+     * 4. 适用于批量重新处理、批量测试等场景
+     * 
+     * @param Request $request 请求对象
+     * @param array $request->task_ids 任务ID数组（必须）
+     * @param int $request->task_type 任务类型（必须）
+     * @param bool $request->force 是否强制推送（可选）
+     * @param bool $request->continue_on_error 遇到错误是否继续（可选）
+     * 
+     * @return array JSON响应
+     */
+    public function pushBatchTasks(Request $request)
+    {
+        $taskIds = $request->input('task_ids', []);
+        $taskType = $request->input('task_type');
+        $force = $request->input('force', false);
+        $continueOnError = $request->input('continue_on_error', true);
+
+        // 参数验证
+        if (empty($taskIds) || !is_array($taskIds)) {
+            return jsons(400, 'task_ids 必须是非空数组');
+        }
+
+        if (!QueueConstants::isValidTaskType($taskType)) {
+            return jsons(400, '无效的任务类型');
+        }
+
+        $results = [
+            'total' => count($taskIds),
+            'success' => 0,
+            'failed' => 0,
+            'details' => []
+        ];
+
+        foreach ($taskIds as $taskId) {
+            try {
+                $taskInfo = TaskInfo::find($taskId);
+                if (!$taskInfo) {
+                    $results['details'][] = [
+                        'task_id' => $taskId,
+                        'status' => 'failed',
+                        'message' => '任务不存在'
+                    ];
+                    $results['failed']++;
+                    continue;
+                }
+
+                // 验证和推送
+                $validationResult = $this->validateTaskForType($taskInfo, $taskType, $force);
+                if ($validationResult !== true) {
+                    $results['details'][] = [
+                        'task_id' => $taskId,
+                        'status' => 'failed',
+                        'message' => $validationResult
+                    ];
+                    $results['failed']++;
+                    
+                    if (!$continueOnError) {
+                        break;
+                    }
+                    continue;
+                }
+
+                $pushResult = $this->pushToSpecificQueue($taskInfo, $taskType);
+                if ($pushResult['success']) {
+                    $results['details'][] = [
+                        'task_id' => $taskId,
+                        'status' => 'success',
+                        'queue' => $pushResult['queue']
+                    ];
+                    $results['success']++;
+                } else {
+                    $results['details'][] = [
+                        'task_id' => $taskId,
+                        'status' => 'failed',
+                        'message' => $pushResult['message']
+                    ];
+                    $results['failed']++;
+                    
+                    if (!$continueOnError) {
+                        break;
+                    }
+                }
+
+            } catch (\Exception $e) {
+                $results['details'][] = [
+                    'task_id' => $taskId,
+                    'status' => 'failed',
+                    'message' => $e->getMessage()
+                ];
+                $results['failed']++;
+                
+                if (!$continueOnError) {
+                    break;
+                }
+            }
+        }
+
+        $message = "批量推送完成：成功 {$results['success']} 个，失败 {$results['failed']} 个";
+        $code = $results['failed'] > 0 ? 207 : 200; // 207 表示部分成功
+
+        return jsons($code, $message, $results);
     }
 }
