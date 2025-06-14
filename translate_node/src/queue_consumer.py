@@ -66,13 +66,18 @@ class QueueConsumer:
             self.connection = pika.BlockingConnection(parameters)
             self.channel = self.connection.channel()
             
-            # 声明队列
+            # 声明队列（与后端保持一致的参数）
+            queue_arguments = {
+                'x-message-ttl': self.config.QUEUE_TTL,  # 消息TTL
+                'x-max-priority': 10,                    # 支持优先级
+                'x-dead-letter-exchange': 'task_dlx',    # 死信交换机
+                'x-dead-letter-routing-key': 'dead_letter'  # 死信路由键
+            }
+            
             self.channel.queue_declare(
                 queue=self.config.QUEUE_NAME,
                 durable=self.config.QUEUE_DURABLE,
-                arguments={
-                    'x-message-ttl': self.config.QUEUE_TTL,
-                }
+                arguments=queue_arguments
             )
             
             # 设置QoS
