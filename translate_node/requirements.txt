@@ -9,7 +9,7 @@ loguru==0.7.2
 librosa>=0.10.0
 
 # WhisperX特有依赖
-whisperx==3.1.1
+#whisperx==3.1.1
 
 # 注意：以下依赖已在environment.yml中定义，这里仅作为备注
 # 已在environment.yml中的依赖:
