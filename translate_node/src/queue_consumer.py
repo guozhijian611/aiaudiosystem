@@ -31,6 +31,7 @@ class QueueConsumer:
         os.makedirs(self.config.WORK_DIR, exist_ok=True)
         os.makedirs(self.config.TEMP_DIR, exist_ok=True)
         os.makedirs('./logs', exist_ok=True)
+        os.makedirs(self.config.MODEL_CACHE_DIR, exist_ok=True)
         
         logger.info(f"队列消费者初始化完成: {self.config.QUEUE_NAME}")
         logger.info(f"工作目录: {self.config.WORK_DIR}")
