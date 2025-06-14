@@ -13,7 +13,7 @@ services:
       - RABBITMQ_USERNAME=admin
       - RABBITMQ_PASSWORD=admin
       - API_BASE_URL=http://10.0.0.130:8787
-      - QUEUE_NAME=text_transcribe_queue
+      - QUEUE_NAME=transcribe_queue
       - WHISPER_MODEL=large-v3
       - WHISPER_DEVICE=auto
       - ENABLE_DIARIZATION=true

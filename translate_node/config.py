@@ -20,7 +20,7 @@ class Config:
     RABBITMQ_VIRTUAL_HOST = os.getenv('RABBITMQ_VIRTUAL_HOST', '/')
     
     # 队列名称
-    QUEUE_NAME = os.getenv('QUEUE_NAME', 'text_transcribe_queue')
+    QUEUE_NAME = os.getenv('QUEUE_NAME', 'transcribe_queue')
     
     # 后端API配置
     API_BASE_URL = os.getenv('API_BASE_URL', 'http://localhost:8787')

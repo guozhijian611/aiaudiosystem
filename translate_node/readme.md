@@ -97,7 +97,7 @@ RABBITMQ_PASSWORD=admin
 
 # API配置
 API_BASE_URL=http://10.0.0.130:8787
-QUEUE_NAME=text_transcribe_queue
+QUEUE_NAME=transcribe_queue
 
 # WhisperX配置
 WHISPER_MODEL=large-v3          # 模型大小: tiny, base, small, medium, large-v3
@@ -200,7 +200,7 @@ grep "ERROR" logs/translate_node.log
 
 ### 队列消息格式
 
-发送到 `text_transcribe_queue` 的消息格式：
+发送到 `transcribe_queue` 的消息格式：
 
 ```json
 {

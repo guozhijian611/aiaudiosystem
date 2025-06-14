@@ -16,7 +16,7 @@ fi
 
 echo "启动 Translate Node..."
 echo "配置信息:"
-echo "- 队列: $(grep QUEUE_NAME .env || echo 'text_transcribe_queue')"
+echo "- 队列: $(grep QUEUE_NAME .env || echo 'transcribe_queue')"
 echo "- RabbitMQ: $(grep RABBITMQ_HOST .env || echo 'localhost')"
 echo "- API: $(grep API_BASE_URL .env || echo 'http://localhost:8787')"
 echo ""
