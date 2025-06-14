@@ -11,6 +11,7 @@ import threading
 import concurrent.futures
 from pathlib import Path
 from logger import logger
+import numpy as np
 
 # 添加项目路径
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -315,91 +316,369 @@ class WhisperXTranscriber:
         
         logger.info("正在进行音频转写...")
         
-        # 加载音频
-        audio = whisperx.load_audio(audio_path)
+        # 获取音频信息
+        file_info = self._get_audio_info(audio_path)
+        audio_duration = file_info['duration']
         
-        # Step 1: 转写
-        logger.info("Step 1: 执行语音识别...")
-        result = self.model.transcribe(
-            audio, 
-            batch_size=self.config.WHISPER_BATCH_SIZE,
-            language=self.config.WHISPER_LANGUAGE if self.config.WHISPER_LANGUAGE != 'auto' else None
-        )
+        # 清理GPU内存
+        self._clear_gpu_memory()
         
-        # 提取文本和语言
-        text = ' '.join([segment['text'] for segment in result['segments']])
-        language = result.get('language', 'unknown')
+        # 检查内存使用情况
+        memory_info = self._get_memory_usage()
+        logger.info(f"转写前内存状态: {memory_info}")
         
-        logger.info(f"识别语言: {language}")
-        logger.info(f"转写文本长度: {len(text)}字符")
+        # 判断是否需要拆分音频
+        device = self._get_device()
+        should_split = self._should_split_audio(audio_duration, device, memory_info)
         
-        # Step 2: 语言对齐（可选）
-        if self.align_model:
-            try:
-                logger.info("Step 2: 执行语言对齐...")
-                result = whisperx.align(
-                    result['segments'], 
-                    self.align_model, 
-                    self.align_metadata, 
-                    audio, 
-                    self._get_device()
-                )
-                logger.info("语言对齐完成")
-            except Exception as e:
-                logger.warning(f"语言对齐失败: {e}")
-                logger.warning("跳过对齐步骤，继续处理")
+        if should_split:
+            logger.info(f"音频时长 {audio_duration:.1f}秒，将进行分块处理")
+            return self._transcribe_with_splitting(audio_path, whisperx)
         else:
-            logger.info("Step 2: 跳过语言对齐（已禁用）")
+            logger.info(f"音频时长 {audio_duration:.1f}秒，进行整体处理")
+            return self._transcribe_whole_audio(audio_path, whisperx)
+    
+    def _should_split_audio(self, duration: float, device: str, memory_info: dict) -> bool:
+        """判断是否需要拆分音频"""
+        # 强制拆分的条件
+        max_duration = self.config.MAX_AUDIO_DURATION
+        if duration > max_duration:
+            logger.info(f"音频超过最大时长限制 {max_duration}秒，强制拆分")
+            return True
         
-        # Step 3: 说话人分离（可选）
-        speakers = []
-        if self.diarize_model:
-            try:
-                logger.info("Step 3: 执行说话人分离...")
-                diarize_segments = self.diarize_model(
-                    audio,
-                    min_speakers=self.config.MIN_SPEAKERS,
-                    max_speakers=self.config.MAX_SPEAKERS
-                )
-                result = whisperx.assign_word_speakers(diarize_segments, result)
+        # GPU内存不足时拆分
+        if device == 'cuda' and memory_info.get('type') == 'GPU':
+            free_memory = memory_info.get('free', 0)
+            if free_memory < 2.0:  # 少于2GB空闲内存
+                logger.info(f"GPU空闲内存不足 {free_memory:.1f}GB，建议拆分")
+                return True
+        
+        # 长音频建议拆分
+        if duration > 1800:  # 30分钟以上
+            logger.info(f"音频较长 {duration/60:.1f}分钟，建议拆分处理")
+            return True
+        
+        return False
+    
+    def _transcribe_whole_audio(self, audio_path: str, whisperx) -> dict:
+        """整体转写音频"""
+        try:
+            # 加载音频
+            audio = whisperx.load_audio(audio_path)
+            
+            # 获取设备和批处理大小
+            device = self._get_device()
+            file_info = self._get_audio_info(audio_path)
+            batch_size = self._get_optimal_batch_size(device, file_info['duration'])
+            
+            logger.info(f"使用批处理大小: {batch_size}")
+            
+            # Step 1: 转写
+            logger.info("Step 1: 执行语音识别...")
+            result = self._transcribe_with_fallback(audio, batch_size)
+            
+            # 提取文本和语言
+            text = ' '.join([segment['text'] for segment in result['segments']])
+            language = result.get('language', 'unknown')
+            
+            logger.info(f"识别语言: {language}")
+            logger.info(f"转写文本长度: {len(text)}字符")
+            
+            # Step 2: 语言对齐（可选）
+            if self.align_model:
+                try:
+                    logger.info("Step 2: 执行语言对齐...")
+                    result = whisperx.align(
+                        result['segments'], 
+                        self.align_model, 
+                        self.align_metadata, 
+                        audio, 
+                        self._get_device()
+                    )
+                    logger.info("语言对齐完成")
+                except Exception as e:
+                    logger.warning(f"语言对齐失败: {e}")
+                    logger.warning("跳过对齐步骤，继续处理")
+            else:
+                logger.info("Step 2: 跳过语言对齐（已禁用）")
+            
+            # Step 3: 说话人分离（可选）
+            speakers = []
+            if self.diarize_model:
+                try:
+                    logger.info("Step 3: 执行说话人分离...")
+                    diarize_segments = self.diarize_model(
+                        audio,
+                        min_speakers=self.config.MIN_SPEAKERS,
+                        max_speakers=self.config.MAX_SPEAKERS
+                    )
+                    result = whisperx.assign_word_speakers(diarize_segments, result)
+                    
+                    # 提取说话人信息
+                    speakers = list(set([segment.get('speaker', 'UNKNOWN') 
+                                       for segment in result['segments'] 
+                                       if segment.get('speaker')]))
+                    logger.info(f"说话人分离完成，检测到 {len(speakers)} 个说话人")
+                except Exception as e:
+                    logger.warning(f"说话人分离失败: {e}")
+                    logger.warning("跳过说话人分离步骤，继续处理")
+            else:
+                logger.info("Step 3: 跳过说话人分离（已禁用）")
+            
+            # 计算平均置信度
+            confidences = []
+            for segment in result['segments']:
+                if 'words' in segment:
+                    for word in segment['words']:
+                        if 'score' in word:
+                            confidences.append(word['score'])
+                elif 'score' in segment:
+                    confidences.append(segment['score'])
+            
+            confidence_avg = sum(confidences) / len(confidences) if confidences else 0
+            
+            # 计算有效语音时长
+            effective_voice = 0
+            for segment in result['segments']:
+                if 'start' in segment and 'end' in segment:
+                    effective_voice += segment['end'] - segment['start']
+            
+            return {
+                'text': text,
+                'language': language,
+                'segments': result['segments'],
+                'confidence_avg': confidence_avg,
+                'speakers': speakers,
+                'effective_voice': effective_voice
+            }
+            
+        except Exception as e:
+            logger.error(f"整体转写失败: {e}")
+            raise
+    
+    def _transcribe_with_splitting(self, audio_path: str, whisperx) -> dict:
+        """分块转写音频"""
+        try:
+            logger.info("开始分块转写处理...")
+            
+            # 加载完整音频获取基本信息
+            audio = whisperx.load_audio(audio_path)
+            file_info = self._get_audio_info(audio_path)
+            total_duration = file_info['duration']
+            
+            # 计算分块大小
+            chunk_duration = min(self.config.CHUNK_DURATION, 300)  # 最大5分钟一块
+            chunk_samples = int(chunk_duration * file_info['sample_rate'])
+            
+            logger.info(f"音频总时长: {total_duration:.1f}秒")
+            logger.info(f"分块大小: {chunk_duration}秒")
+            
+            # 分块处理
+            all_segments = []
+            all_speakers = set()
+            total_effective_voice = 0
+            confidences = []
+            detected_language = 'unknown'
+            
+            num_chunks = int(np.ceil(len(audio) / chunk_samples))
+            logger.info(f"总共分为 {num_chunks} 块")
+            
+            for i in range(num_chunks):
+                start_sample = i * chunk_samples
+                end_sample = min((i + 1) * chunk_samples, len(audio))
+                chunk_audio = audio[start_sample:end_sample]
                 
-                # 提取说话人信息
-                speakers = list(set([segment.get('speaker', 'UNKNOWN') 
-                                   for segment in result['segments'] 
-                                   if segment.get('speaker')]))
-                logger.info(f"说话人分离完成，检测到 {len(speakers)} 个说话人")
-            except Exception as e:
-                logger.warning(f"说话人分离失败: {e}")
-                logger.warning("跳过说话人分离步骤，继续处理")
-        else:
-            logger.info("Step 3: 跳过说话人分离（已禁用）")
+                chunk_start_time = start_sample / file_info['sample_rate']
+                chunk_end_time = end_sample / file_info['sample_rate']
+                
+                logger.info(f"处理第 {i+1}/{num_chunks} 块 ({chunk_start_time:.1f}s - {chunk_end_time:.1f}s)")
+                
+                # 清理GPU内存
+                self._clear_gpu_memory()
+                
+                try:
+                    # 转写当前块
+                    chunk_result = self._transcribe_chunk(chunk_audio, chunk_start_time, whisperx)
+                    
+                    # 合并结果
+                    if chunk_result['segments']:
+                        all_segments.extend(chunk_result['segments'])
+                        total_effective_voice += chunk_result.get('effective_voice', 0)
+                        
+                        # 收集置信度
+                        for segment in chunk_result['segments']:
+                            if 'words' in segment:
+                                for word in segment['words']:
+                                    if 'score' in word:
+                                        confidences.append(word['score'])
+                            elif 'score' in segment:
+                                confidences.append(segment['score'])
+                        
+                        # 收集说话人
+                        chunk_speakers = chunk_result.get('speakers', [])
+                        all_speakers.update(chunk_speakers)
+                        
+                        # 记录检测到的语言
+                        if detected_language == 'unknown':
+                            detected_language = chunk_result.get('language', 'unknown')
+                    
+                    logger.info(f"第 {i+1} 块处理完成，段落数: {len(chunk_result.get('segments', []))}")
+                    
+                except Exception as e:
+                    logger.error(f"第 {i+1} 块处理失败: {e}")
+                    # 继续处理下一块
+                    continue
+            
+            # 合并所有文本
+            full_text = ' '.join([segment['text'] for segment in all_segments])
+            confidence_avg = sum(confidences) / len(confidences) if confidences else 0
+            
+            logger.info(f"分块转写完成:")
+            logger.info(f"- 总段落数: {len(all_segments)}")
+            logger.info(f"- 文本长度: {len(full_text)}字符")
+            logger.info(f"- 检测语言: {detected_language}")
+            logger.info(f"- 说话人数: {len(all_speakers)}")
+            
+            return {
+                'text': full_text,
+                'language': detected_language,
+                'segments': all_segments,
+                'confidence_avg': confidence_avg,
+                'speakers': list(all_speakers),
+                'effective_voice': total_effective_voice
+            }
+            
+        except Exception as e:
+            logger.error(f"分块转写失败: {e}")
+            raise
+    
+    def _transcribe_chunk(self, chunk_audio, start_time_offset: float, whisperx) -> dict:
+        """转写单个音频块"""
+        try:
+            # 获取设备和批处理大小
+            device = self._get_device()
+            chunk_duration = len(chunk_audio) / 16000  # 假设16kHz采样率
+            batch_size = self._get_optimal_batch_size(device, chunk_duration)
+            
+            # 转写
+            result = self._transcribe_with_fallback(chunk_audio, batch_size)
+            
+            # 调整时间戳
+            for segment in result['segments']:
+                if 'start' in segment:
+                    segment['start'] += start_time_offset
+                if 'end' in segment:
+                    segment['end'] += start_time_offset
+                
+                # 调整词级时间戳
+                if 'words' in segment:
+                    for word in segment['words']:
+                        if 'start' in word:
+                            word['start'] += start_time_offset
+                        if 'end' in word:
+                            word['end'] += start_time_offset
+            
+            # 计算有效语音时长
+            effective_voice = 0
+            for segment in result['segments']:
+                if 'start' in segment and 'end' in segment:
+                    effective_voice += segment['end'] - segment['start']
+            
+            return {
+                'segments': result['segments'],
+                'language': result.get('language', 'unknown'),
+                'effective_voice': effective_voice,
+                'speakers': []  # 分块处理暂不支持说话人分离
+            }
+            
+        except Exception as e:
+            logger.error(f"音频块转写失败: {e}")
+            return {
+                'segments': [],
+                'language': 'unknown',
+                'effective_voice': 0,
+                'speakers': []
+            }
+    
+    def _transcribe_with_fallback(self, audio, batch_size: int) -> dict:
+        """带回退机制的转写"""
+        device = self._get_device()
         
-        # 计算平均置信度
-        confidences = []
-        for segment in result['segments']:
-            if 'words' in segment:
-                for word in segment['words']:
-                    if 'score' in word:
-                        confidences.append(word['score'])
-            elif 'score' in segment:
-                confidences.append(segment['score'])
-        
-        confidence_avg = sum(confidences) / len(confidences) if confidences else 0
-        
-        # 计算有效语音时长
-        effective_voice = 0
-        for segment in result['segments']:
-            if 'start' in segment and 'end' in segment:
-                effective_voice += segment['end'] - segment['start']
-        
-        return {
-            'text': text,
-            'language': language,
-            'segments': result['segments'],
-            'confidence_avg': confidence_avg,
-            'speakers': speakers,
-            'effective_voice': effective_voice
-        }
+        try:
+            # 尝试使用当前设备和批处理大小
+            logger.info(f"尝试转写: 设备={device}, 批处理={batch_size}")
+            result = self.model.transcribe(
+                audio, 
+                batch_size=batch_size,
+                language=self.config.WHISPER_LANGUAGE if self.config.WHISPER_LANGUAGE != 'auto' else None
+            )
+            return result
+            
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower():
+                logger.warning(f"GPU内存不足: {e}")
+                
+                # 尝试减小批处理大小
+                if batch_size > 1:
+                    new_batch_size = max(1, batch_size // 2)
+                    logger.info(f"尝试减小批处理大小到 {new_batch_size}")
+                    self._clear_gpu_memory()
+                    
+                    try:
+                        result = self.model.transcribe(
+                            audio, 
+                            batch_size=new_batch_size,
+                            language=self.config.WHISPER_LANGUAGE if self.config.WHISPER_LANGUAGE != 'auto' else None
+                        )
+                        return result
+                    except RuntimeError as e2:
+                        if "out of memory" in str(e2).lower():
+                            logger.warning(f"减小批处理大小仍然内存不足: {e2}")
+                        else:
+                            raise e2
+                
+                # 如果是GPU，尝试切换到CPU
+                if device == 'cuda':
+                    logger.warning("GPU内存不足，尝试切换到CPU处理")
+                    return self._fallback_to_cpu(audio)
+                else:
+                    raise e
+            else:
+                raise e
+        except Exception as e:
+            logger.error(f"转写过程中出现未知错误: {e}")
+            raise e
+    
+    def _fallback_to_cpu(self, audio) -> dict:
+        """回退到CPU处理"""
+        try:
+            logger.info("正在切换到CPU模式...")
+            
+            # 重新初始化CPU模型
+            import whisperx
+            cpu_model = whisperx.load_model(
+                self.config.WHISPER_MODEL,
+                device="cpu",
+                compute_type="float32",
+                language=self.config.WHISPER_LANGUAGE if self.config.WHISPER_LANGUAGE != 'auto' else None
+            )
+            
+            # 使用较小的批处理大小
+            cpu_batch_size = max(1, self.config.WHISPER_BATCH_SIZE // 4)
+            logger.info(f"CPU模式批处理大小: {cpu_batch_size}")
+            
+            result = cpu_model.transcribe(
+                audio,
+                batch_size=cpu_batch_size,
+                language=self.config.WHISPER_LANGUAGE if self.config.WHISPER_LANGUAGE != 'auto' else None
+            )
+            
+            logger.info("CPU模式转写完成")
+            return result
+            
+        except Exception as e:
+            logger.error(f"CPU回退处理失败: {e}")
+            raise e
     
     def _get_audio_info(self, audio_path: str) -> dict:
         """获取音频文件基本信息"""
@@ -503,3 +782,86 @@ class WhisperXTranscriber:
         except Exception as e:
             logger.warning(f"计算类型 {compute_type} 测试异常: {e}")
             return False
+    
+    def _get_optimal_batch_size(self, device: str, audio_duration: float) -> int:
+        """根据设备和音频长度智能选择批处理大小"""
+        try:
+            base_batch_size = self.config.WHISPER_BATCH_SIZE
+            
+            if device == 'cpu':
+                # CPU设备，根据音频长度调整
+                if audio_duration > 1800:  # 30分钟以上
+                    return max(1, base_batch_size // 4)
+                elif audio_duration > 600:  # 10分钟以上
+                    return max(1, base_batch_size // 2)
+                else:
+                    return base_batch_size
+            
+            # GPU设备，检查显存
+            import torch
+            if torch.cuda.is_available():
+                device_props = torch.cuda.get_device_properties(0)
+                total_memory_gb = device_props.total_memory / 1024**3
+                
+                # 根据显存大小调整批处理
+                if total_memory_gb < 4:  # 小于4GB显存
+                    return max(1, base_batch_size // 8)
+                elif total_memory_gb < 8:  # 小于8GB显存
+                    return max(1, base_batch_size // 4)
+                elif total_memory_gb < 12:  # 小于12GB显存
+                    return max(1, base_batch_size // 2)
+                else:
+                    return base_batch_size
+            
+            return base_batch_size
+            
+        except Exception as e:
+            logger.warning(f"批处理大小优化失败: {e}，使用默认值")
+            return max(1, self.config.WHISPER_BATCH_SIZE // 2)
+    
+    def _clear_gpu_memory(self):
+        """清理GPU内存"""
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                logger.info("GPU内存已清理")
+        except Exception as e:
+            logger.warning(f"GPU内存清理失败: {e}")
+    
+    def _get_memory_usage(self) -> dict:
+        """获取内存使用情况"""
+        try:
+            import torch
+            
+            if torch.cuda.is_available():
+                device_id = torch.cuda.current_device()
+                memory_allocated = torch.cuda.memory_allocated(device_id) / 1024**3
+                memory_reserved = torch.cuda.memory_reserved(device_id) / 1024**3
+                memory_total = torch.cuda.get_device_properties(device_id).total_memory / 1024**3
+                
+                return {
+                    'type': 'GPU',
+                    'allocated': memory_allocated,
+                    'reserved': memory_reserved,
+                    'total': memory_total,
+                    'free': memory_total - memory_reserved,
+                    'usage_percent': (memory_reserved / memory_total) * 100
+                }
+            else:
+                try:
+                    import psutil
+                    memory_info = psutil.virtual_memory()
+                    return {
+                        'type': 'CPU',
+                        'used': memory_info.used / 1024**3,
+                        'total': memory_info.total / 1024**3,
+                        'free': memory_info.available / 1024**3,
+                        'usage_percent': memory_info.percent
+                    }
+                except ImportError:
+                    return {'type': 'Unknown', 'error': 'psutil not available'}
+                    
+        except Exception as e:
+            return {'type': 'Error', 'error': str(e)}
