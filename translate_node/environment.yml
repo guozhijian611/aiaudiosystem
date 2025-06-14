@@ -1,7 +1,6 @@
 name: whisperx
 channels:
   - nvidia
-  - pytorch
   - conda-forge
   - defaults
 dependencies:

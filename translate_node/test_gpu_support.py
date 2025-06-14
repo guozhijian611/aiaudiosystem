@@ -151,6 +151,7 @@ def test_faster_whisper():
     print("=" * 50)
     
     try:
+        import torch
         from faster_whisper import WhisperModel
         print("✓ faster-whisper导入成功")
         
