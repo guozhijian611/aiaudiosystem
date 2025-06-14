@@ -270,7 +270,12 @@ class WhisperXTranscriber:
                 'effective_voice': result.get('effective_voice', total_duration),
                 'total_voice': total_duration,
                 'processing_time': process_time,
-                'file_info': file_info
+                'file_info': file_info,
+                # 添加模型和设备信息
+                'whisper_model': self.config.WHISPER_MODEL,
+                'compute_device': self._get_device(),
+                'alignment_enabled': bool(self.align_model),
+                'diarization_enabled': bool(self.diarize_model)
             }
             
             logger.info(f"转写完成: 文本长度={len(transcribe_result['text'])}字符, "

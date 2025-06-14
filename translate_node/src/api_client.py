@@ -86,19 +86,32 @@ class APIClient:
             task_id (int): 任务ID
             transcribe_result (dict): 转写结果
         """
+        # 构建完整的转写详情
+        transcribe_details = {
+            'text': transcribe_result.get('text', ''),                     # 转写文本
+            'segments_count': transcribe_result.get('segments_count', 0),  # 段落数量
+            'confidence_avg': transcribe_result.get('confidence_avg', 0),  # 平均置信度
+            'word_count': transcribe_result.get('word_count', 0),          # 词汇数量
+            'speakers': transcribe_result.get('speakers', []),             # 说话人列表
+            'segments': transcribe_result.get('segments', []),             # 详细段落信息
+            'processing_time': transcribe_result.get('processing_time', 0), # 处理时间
+            'file_info': transcribe_result.get('file_info', {}),           # 文件信息
+            'model_info': {
+                'whisper_model': transcribe_result.get('whisper_model', 'unknown'),
+                'language_detected': transcribe_result.get('language', 'unknown'),
+                'compute_device': transcribe_result.get('compute_device', 'unknown'),
+                'alignment_enabled': transcribe_result.get('alignment_enabled', False),
+                'diarization_enabled': transcribe_result.get('diarization_enabled', False)
+            }
+        }
+        
         # 准备回调数据
         callback_data = {
-            'text_info': transcribe_result.get('text', ''),                    # 转写文本
+            'text_info': transcribe_details,                               # 完整的转写详情
             'effective_voice': transcribe_result.get('effective_voice', 0),    # 有效语音时长
             'total_voice': transcribe_result.get('total_voice', 0),            # 音频总时长
             'language': transcribe_result.get('language', 'unknown'),          # 识别的语言
-            'transcribe_details': {
-                'segments_count': transcribe_result.get('segments_count', 0),
-                'confidence_avg': transcribe_result.get('confidence_avg', 0),
-                'word_count': transcribe_result.get('word_count', 0),
-                'speakers': transcribe_result.get('speakers', []),
-                'segments': transcribe_result.get('segments', [])
-            }
+            'transcribe_details': transcribe_details                           # 保持向后兼容
         }
         
         return self.send_callback(task_id, 4, 'success', callback_data)
