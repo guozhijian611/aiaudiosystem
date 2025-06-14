@@ -63,20 +63,44 @@ class WhisperXTranscriber:
             
             # 初始化对齐模型
             if self.config.ENABLE_ALIGNMENT:
-                logger.info(f"正在加载对齐模型: {self.config.ALIGNMENT_MODEL}")
-                self.align_model, self.align_metadata = whisperx.load_align_model(
-                    language_code=self.config.WHISPER_LANGUAGE if self.config.WHISPER_LANGUAGE != 'auto' else 'en',
-                    device=device,
-                    model_name=self.config.ALIGNMENT_MODEL
-                )
+                try:
+                    logger.info(f"正在加载对齐模型: {self.config.ALIGNMENT_MODEL}")
+                    self.align_model, self.align_metadata = whisperx.load_align_model(
+                        language_code=self.config.WHISPER_LANGUAGE if self.config.WHISPER_LANGUAGE != 'auto' else 'en',
+                        device=device,
+                        model_name=self.config.ALIGNMENT_MODEL
+                    )
+                    logger.info("对齐模型加载成功")
+                except Exception as e:
+                    logger.warning(f"对齐模型加载失败: {e}")
+                    logger.warning("将禁用对齐功能，继续使用其他功能")
+                    self.align_model = None
+            else:
+                logger.info("对齐功能已禁用")
+                self.align_model = None
             
             # 初始化说话人分离模型
             if self.config.ENABLE_DIARIZATION and self.config.HF_TOKEN:
-                logger.info(f"正在加载说话人分离模型: {self.config.DIARIZATION_MODEL}")
-                self.diarize_model = whisperx.DiarizationPipeline(
-                    use_auth_token=self.config.HF_TOKEN,
-                    device=device
-                )
+                try:
+                    logger.info(f"正在加载说话人分离模型: {self.config.DIARIZATION_MODEL}")
+                    # 直接从diarize模块导入DiarizationPipeline
+                    from whisperx.diarize import DiarizationPipeline
+                    self.diarize_model = DiarizationPipeline(
+                        model_name=self.config.DIARIZATION_MODEL,
+                        use_auth_token=self.config.HF_TOKEN,
+                        device=device
+                    )
+                    logger.info("说话人分离模型加载成功")
+                except Exception as e:
+                    logger.warning(f"说话人分离模型加载失败: {e}")
+                    logger.warning("将禁用说话人分离功能，继续使用其他功能")
+                    self.diarize_model = None
+            else:
+                if not self.config.ENABLE_DIARIZATION:
+                    logger.info("说话人分离功能已禁用")
+                elif not self.config.HF_TOKEN:
+                    logger.warning("未配置HF_TOKEN，无法使用说话人分离功能")
+                self.diarize_model = None
             
             # 获取模型实际使用的设备
             actual_device = self._get_model_device()
@@ -85,8 +109,8 @@ class WhisperXTranscriber:
             logger.info(f"转写模型: {self.config.WHISPER_MODEL}")
             logger.info(f"计算精度: {compute_type}")
             logger.info(f"语言设置: {self.config.WHISPER_LANGUAGE}")
-            logger.info(f"对齐模型: {'启用' if self.config.ENABLE_ALIGNMENT else '禁用'}")
-            logger.info(f"说话人分离: {'启用' if self.config.ENABLE_DIARIZATION else '禁用'}")
+            logger.info(f"对齐模型: {'启用' if self.align_model else '禁用'}")
+            logger.info(f"说话人分离: {'启用' if self.diarize_model else '禁用'}")
             logger.info(f"模型运行设备: {actual_device}")
             
         except Exception as e:
@@ -172,13 +196,16 @@ class WhisperXTranscriber:
                 
             else:
                 # CPU使用情况
-                import psutil
-                cpu_percent = psutil.cpu_percent(interval=0.1)
-                memory_info = psutil.virtual_memory()
-                memory_used = memory_info.used / 1024**3  # GB
-                memory_total = memory_info.total / 1024**3  # GB
-                
-                return f"CPU - 使用率: {cpu_percent:.1f}%, 内存: {memory_used:.1f}GB/{memory_total:.1f}GB"
+                try:
+                    import psutil
+                    cpu_percent = psutil.cpu_percent(interval=0.1)
+                    memory_info = psutil.virtual_memory()
+                    memory_used = memory_info.used / 1024**3  # GB
+                    memory_total = memory_info.total / 1024**3  # GB
+                    
+                    return f"CPU - 使用率: {cpu_percent:.1f}%, 内存: {memory_used:.1f}GB/{memory_total:.1f}GB"
+                except ImportError:
+                    return "CPU - 无法获取详细信息（缺少psutil）"
                 
         except ImportError as e:
             return f"缺少依赖库: {str(e)}"
@@ -307,31 +334,45 @@ class WhisperXTranscriber:
         logger.info(f"转写文本长度: {len(text)}字符")
         
         # Step 2: 语言对齐（可选）
-        if self.config.ENABLE_ALIGNMENT and self.align_model:
-            logger.info("Step 2: 执行语言对齐...")
-            result = whisperx.align(
-                result['segments'], 
-                self.align_model, 
-                self.align_metadata, 
-                audio, 
-                self._get_device()
-            )
+        if self.align_model:
+            try:
+                logger.info("Step 2: 执行语言对齐...")
+                result = whisperx.align(
+                    result['segments'], 
+                    self.align_model, 
+                    self.align_metadata, 
+                    audio, 
+                    self._get_device()
+                )
+                logger.info("语言对齐完成")
+            except Exception as e:
+                logger.warning(f"语言对齐失败: {e}")
+                logger.warning("跳过对齐步骤，继续处理")
+        else:
+            logger.info("Step 2: 跳过语言对齐（已禁用）")
         
         # Step 3: 说话人分离（可选）
         speakers = []
-        if self.config.ENABLE_DIARIZATION and self.diarize_model:
-            logger.info("Step 3: 执行说话人分离...")
-            diarize_segments = self.diarize_model(
-                audio,
-                min_speakers=self.config.MIN_SPEAKERS,
-                max_speakers=self.config.MAX_SPEAKERS
-            )
-            result = whisperx.assign_word_speakers(diarize_segments, result)
-            
-            # 提取说话人信息
-            speakers = list(set([segment.get('speaker', 'UNKNOWN') 
-                               for segment in result['segments'] 
-                               if segment.get('speaker')]))
+        if self.diarize_model:
+            try:
+                logger.info("Step 3: 执行说话人分离...")
+                diarize_segments = self.diarize_model(
+                    audio,
+                    min_speakers=self.config.MIN_SPEAKERS,
+                    max_speakers=self.config.MAX_SPEAKERS
+                )
+                result = whisperx.assign_word_speakers(diarize_segments, result)
+                
+                # 提取说话人信息
+                speakers = list(set([segment.get('speaker', 'UNKNOWN') 
+                                   for segment in result['segments'] 
+                                   if segment.get('speaker')]))
+                logger.info(f"说话人分离完成，检测到 {len(speakers)} 个说话人")
+            except Exception as e:
+                logger.warning(f"说话人分离失败: {e}")
+                logger.warning("跳过说话人分离步骤，继续处理")
+        else:
+            logger.info("Step 3: 跳过说话人分离（已禁用）")
         
         # 计算平均置信度
         confidences = []
@@ -392,10 +433,10 @@ class WhisperXTranscriber:
             'device': self._get_device(),
             'batch_size': self.config.WHISPER_BATCH_SIZE,
             'compute_type': self.config.WHISPER_COMPUTE_TYPE,
-            'alignment_enabled': self.config.ENABLE_ALIGNMENT,
-            'diarization_enabled': self.config.ENABLE_DIARIZATION,
-            'alignment_model': self.config.ALIGNMENT_MODEL if self.config.ENABLE_ALIGNMENT else None,
-            'diarization_model': self.config.DIARIZATION_MODEL if self.config.ENABLE_DIARIZATION else None
+            'alignment_enabled': bool(self.align_model),
+            'diarization_enabled': bool(self.diarize_model),
+            'alignment_model': self.config.ALIGNMENT_MODEL if self.align_model else None,
+            'diarization_model': self.config.DIARIZATION_MODEL if self.diarize_model else None
         }
     
     def _get_optimal_compute_type(self, device: str) -> str:
@@ -461,4 +502,4 @@ class WhisperXTranscriber:
             return False
         except Exception as e:
             logger.warning(f"计算类型 {compute_type} 测试异常: {e}")
-            return False 
+            return False
