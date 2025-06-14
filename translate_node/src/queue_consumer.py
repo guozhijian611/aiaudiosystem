@@ -108,14 +108,27 @@ class QueueConsumer:
         try:
             # 解析消息
             message = json.loads(body.decode())
-            task_id = message.get('task_id')
-            voice_url = message.get('voice_url')
+            logger.info(f"收到队列消息: {message}")
             
-            logger.info(f"收到转写任务: task_id={task_id}, voice_url={voice_url}")
+            # 获取task_info数据（新格式）
+            task_info = message.get('task_info', {})
             
-            # 验证必要参数
-            if not task_id or not voice_url:
-                raise ValueError(f"缺少必要参数: task_id={task_id}, voice_url={voice_url}")
+            if not task_info or not isinstance(task_info, dict):
+                raise ValueError("消息格式错误：缺少task_info字段或格式不正确")
+            
+            # 从task_info中获取数据
+            task_id = task_info.get('id')
+            if not task_id:
+                raise ValueError("task_info中缺少id字段")
+            
+            # translate_node使用clear_url（降噪后的音频URL）
+            voice_url = task_info.get('clear_url')
+            if not voice_url:
+                raise ValueError("task_info中缺少clear_url字段，请先完成音频降噪")
+            
+            logger.info(f"收到转写任务: task_id={task_id}, clear_url={voice_url}")
+            logger.info(f"任务详情: 文件名={task_info.get('filename', 'N/A')}, "
+                       f"是否已降噪={task_info.get('is_clear', 0)}")
             
             # 发送处理中回调
             self.api_client.send_processing_callback(task_id)
