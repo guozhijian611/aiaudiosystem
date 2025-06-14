@@ -353,6 +353,12 @@ class QueueController
                 return jsons(400, '任务不存在');
             }
 
+            // 记录回调详细信息用于调试
+            error_log("回调处理开始 - 任务ID: {$taskId}, 类型: {$taskType}, 状态: {$status}");
+            if (!empty($data)) {
+                error_log("回调数据结构: " . json_encode(array_keys($data), JSON_UNESCAPED_UNICODE));
+            }
+
             if ($status === 'success') {
                 $this->handleTaskSuccess($taskInfo, $taskType, $data);
             } else {
@@ -361,6 +367,9 @@ class QueueController
 
             return jsons(200, '回调处理成功');
         } catch (\Exception $e) {
+            // 记录详细的错误信息
+            error_log("回调处理异常 - 任务ID: {$taskId}, 错误: " . $e->getMessage());
+            error_log("错误堆栈: " . $e->getTraceAsString());
             return jsons(400, '回调处理失败：' . $e->getMessage());
         }
     }
@@ -421,53 +430,88 @@ class QueueController
         // 清空错误信息
         $taskInfo->error_msg = '';
         
-        switch ($taskType) {
-            case QueueConstants::TASK_TYPE_EXTRACT:
-                // 音频提取完成 - 更新字段并保存
-                $taskInfo->is_extract = QueueConstants::STATUS_YES;
-                $taskInfo->voice_url = $data['voice_url'] ?? '';
-                $taskInfo->step = QueueConstants::STEP_EXTRACT_COMPLETED;
-                $taskInfo->save(); // 先保存字段更新
-                
-                // 自动推送到音频降噪队列
-                $this->pushToAudioClearQueue($taskInfo);
-                break;
-                
-            case QueueConstants::TASK_TYPE_CONVERT:
-                // 音频降噪完成 - 更新字段并保存
-                $taskInfo->is_clear = QueueConstants::STATUS_YES;
-                $taskInfo->clear_url = $data['clear_url'] ?? '';
-                $taskInfo->step = QueueConstants::STEP_CLEAR_COMPLETED;
-                $taskInfo->save(); // 先保存字段更新
-                
-                // 根据用户选择的流程进行下一步
-                $this->processNextStepAfterClear($taskInfo);
-                break;
-                
-            case QueueConstants::TASK_TYPE_FAST_RECOGNITION:
-                // 快速识别完成 - 更新字段并保存
-                $taskInfo->fast_status = QueueConstants::STATUS_YES;
-                $taskInfo->effective_voice = $data['effective_voice'] ?? '';
-                $taskInfo->total_voice = $data['total_voice'] ?? '';
-                $taskInfo->step = QueueConstants::STEP_FAST_COMPLETED;
-                $taskInfo->save(); // 保存字段更新
-                
-                // 检查是否应该自动继续转写（完整流程）
-                $this->checkAndContinueToTranscribe($taskInfo);
-                break;
-                
-            case QueueConstants::TASK_TYPE_TEXT_CONVERT:
-                // 文本转写完成 - 更新字段并保存
-                $taskInfo->transcribe_status = QueueConstants::STATUS_YES;
-                $taskInfo->text_info = $data['text_info'] ?? '';
-                $taskInfo->effective_voice = $data['effective_voice'] ?? '';
-                $taskInfo->total_voice = $data['total_voice'] ?? '';
-                $taskInfo->language = $data['language'] ?? '';
-                $taskInfo->step = QueueConstants::STEP_ALL_COMPLETED;
-                $taskInfo->save(); // 保存字段更新
-                
-                // 任务完成，无需后续操作
-                break;
+        try {
+            switch ($taskType) {
+                case QueueConstants::TASK_TYPE_EXTRACT:
+                    // 音频提取完成 - 更新字段并保存
+                    $taskInfo->is_extract = QueueConstants::STATUS_YES;
+                    $taskInfo->voice_url = $data['voice_url'] ?? '';
+                    $taskInfo->step = QueueConstants::STEP_EXTRACT_COMPLETED;
+                    $taskInfo->save(); // 先保存字段更新
+                    
+                    // 自动推送到音频降噪队列
+                    $this->pushToAudioClearQueue($taskInfo);
+                    break;
+                    
+                case QueueConstants::TASK_TYPE_CONVERT:
+                    // 音频降噪完成 - 更新字段并保存
+                    $taskInfo->is_clear = QueueConstants::STATUS_YES;
+                    $taskInfo->clear_url = $data['clear_url'] ?? '';
+                    $taskInfo->step = QueueConstants::STEP_CLEAR_COMPLETED;
+                    $taskInfo->save(); // 先保存字段更新
+                    
+                    // 根据用户选择的流程进行下一步
+                    $this->processNextStepAfterClear($taskInfo);
+                    break;
+                    
+                case QueueConstants::TASK_TYPE_FAST_RECOGNITION:
+                    // 快速识别完成 - 更新字段并保存
+                    $taskInfo->fast_status = QueueConstants::STATUS_YES;
+                    $taskInfo->effective_voice = $data['effective_voice'] ?? '';
+                    $taskInfo->total_voice = $data['total_voice'] ?? '';
+                    $taskInfo->step = QueueConstants::STEP_FAST_COMPLETED;
+                    $taskInfo->save(); // 保存字段更新
+                    
+                    // 检查是否应该自动继续转写（完整流程）
+                    $this->checkAndContinueToTranscribe($taskInfo);
+                    break;
+                    
+                case QueueConstants::TASK_TYPE_TEXT_CONVERT:
+                    error_log("处理文本转写回调 - 任务ID: {$taskInfo->id}");
+                    
+                    // 文本转写完成 - 更新字段并保存
+                    $taskInfo->transcribe_status = QueueConstants::STATUS_YES;
+                    
+                    // 安全处理text_info字段
+                    try {
+                        $textInfo = $data['text_info'] ?? '';
+                        if (is_array($textInfo) || is_object($textInfo)) {
+                            // 如果是数组或对象，序列化为JSON字符串
+                            $jsonString = json_encode($textInfo, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+                            if ($jsonString === false) {
+                                error_log("JSON编码失败: " . json_last_error_msg());
+                                $taskInfo->text_info = '{"error": "JSON编码失败"}';
+                            } else {
+                                $taskInfo->text_info = $jsonString;
+                                error_log("text_info已成功序列化，长度: " . strlen($jsonString));
+                            }
+                        } else {
+                            // 如果是字符串，直接保存
+                            $taskInfo->text_info = (string)$textInfo;
+                            error_log("text_info保存为字符串，长度: " . strlen($textInfo));
+                        }
+                    } catch (\Exception $e) {
+                        error_log("处理text_info时出错: " . $e->getMessage());
+                        $taskInfo->text_info = '{"error": "处理text_info时出错: ' . $e->getMessage() . '"}';
+                    }
+                    
+                    // 安全处理其他字段
+                    $taskInfo->effective_voice = isset($data['effective_voice']) ? (string)$data['effective_voice'] : '';
+                    $taskInfo->total_voice = isset($data['total_voice']) ? (string)$data['total_voice'] : '';
+                    $taskInfo->language = isset($data['language']) ? (string)$data['language'] : '';
+                    $taskInfo->step = QueueConstants::STEP_ALL_COMPLETED;
+                    
+                    error_log("准备保存任务信息到数据库");
+                    $taskInfo->save(); // 保存字段更新
+                    error_log("任务信息已成功保存到数据库");
+                    
+                    // 任务完成，无需后续操作
+                    break;
+            }
+        } catch (\Exception $e) {
+            error_log("handleTaskSuccess异常 - 任务ID: {$taskInfo->id}, 类型: {$taskType}, 错误: " . $e->getMessage());
+            error_log("错误堆栈: " . $e->getTraceAsString());
+            throw $e; // 重新抛出异常
         }
     }
 

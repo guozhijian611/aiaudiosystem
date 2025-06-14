@@ -86,33 +86,121 @@ class APIClient:
             task_id (int): 任务ID
             transcribe_result (dict): 转写结果
         """
+        # 数据验证和安全处理
+        def safe_get_array(data, key, default=None):
+            """安全获取数组，确保不为空"""
+            value = data.get(key, default or [])
+            if not isinstance(value, list):
+                return []
+            return value if value else []
+        
+        def safe_get_number(data, key, default=0):
+            """安全获取数字，确保有效"""
+            value = data.get(key, default)
+            if value is None or (isinstance(value, (int, float)) and value <= 0):
+                return default
+            return value
+        
+        def safe_get_string(data, key, default=""):
+            """安全获取字符串"""
+            value = data.get(key, default)
+            return str(value) if value is not None else default
+        
+        def clean_segments(segments):
+            """清理segments数据，确保格式正确"""
+            if not isinstance(segments, list):
+                return []
+            
+            cleaned_segments = []
+            for segment in segments:
+                if not isinstance(segment, dict):
+                    continue
+                
+                # 确保必要字段存在
+                cleaned_segment = {
+                    'text': safe_get_string(segment, 'text', ''),
+                    'start': safe_get_number(segment, 'start', 0.0),
+                    'end': safe_get_number(segment, 'end', 0.0)
+                }
+                
+                # 处理words字段
+                words = segment.get('words', [])
+                if isinstance(words, list) and words:
+                    cleaned_words = []
+                    for word in words:
+                        if isinstance(word, dict):
+                            cleaned_word = {
+                                'word': safe_get_string(word, 'word', ''),
+                                'start': safe_get_number(word, 'start', 0.0),
+                                'end': safe_get_number(word, 'end', 0.0),
+                                'score': safe_get_number(word, 'score', 0.0)
+                            }
+                            cleaned_words.append(cleaned_word)
+                    if cleaned_words:
+                        cleaned_segment['words'] = cleaned_words
+                
+                # 处理speaker字段
+                if 'speaker' in segment and segment['speaker']:
+                    cleaned_segment['speaker'] = safe_get_string(segment, 'speaker', '')
+                
+                cleaned_segments.append(cleaned_segment)
+            
+            return cleaned_segments
+        
+        # 安全获取和处理数据
+        text = safe_get_string(transcribe_result, 'text', '')
+        segments = clean_segments(transcribe_result.get('segments', []))
+        speakers = safe_get_array(transcribe_result, 'speakers', [])
+        
+        # 如果speakers为空，添加默认值避免PHP访问空数组
+        if not speakers:
+            speakers = ['UNKNOWN']
+        
+        # 计算有效的confidence_avg
+        confidence_avg = safe_get_number(transcribe_result, 'confidence_avg', 0.0)
+        if confidence_avg <= 0:
+            # 从segments中重新计算
+            confidences = []
+            for segment in segments:
+                if 'words' in segment:
+                    for word in segment['words']:
+                        score = word.get('score', 0)
+                        if score > 0:
+                            confidences.append(score)
+            confidence_avg = sum(confidences) / len(confidences) if confidences else 0.85
+        
         # 构建完整的转写详情
         transcribe_details = {
-            'text': transcribe_result.get('text', ''),                     # 转写文本
-            'segments_count': transcribe_result.get('segments_count', 0),  # 段落数量
-            'confidence_avg': transcribe_result.get('confidence_avg', 0),  # 平均置信度
-            'word_count': transcribe_result.get('word_count', 0),          # 词汇数量
-            'speakers': transcribe_result.get('speakers', []),             # 说话人列表
-            'segments': transcribe_result.get('segments', []),             # 详细段落信息
-            'processing_time': transcribe_result.get('processing_time', 0), # 处理时间
-            'file_info': transcribe_result.get('file_info', {}),           # 文件信息
+            'text': text,
+            'segments_count': len(segments),
+            'confidence_avg': round(confidence_avg, 3),
+            'word_count': len(text.split()) if text else 0,
+            'speakers': speakers,
+            'segments': segments,
+            'processing_time': safe_get_number(transcribe_result, 'processing_time', 0.0),
+            'file_info': transcribe_result.get('file_info', {}),
             'model_info': {
-                'whisper_model': transcribe_result.get('whisper_model', 'unknown'),
-                'language_detected': transcribe_result.get('language', 'unknown'),
-                'compute_device': transcribe_result.get('compute_device', 'unknown'),
-                'alignment_enabled': transcribe_result.get('alignment_enabled', False),
-                'diarization_enabled': transcribe_result.get('diarization_enabled', False)
+                'whisper_model': safe_get_string(transcribe_result, 'whisper_model', 'unknown'),
+                'language_detected': safe_get_string(transcribe_result, 'language', 'unknown'),
+                'compute_device': safe_get_string(transcribe_result, 'compute_device', 'unknown'),
+                'alignment_enabled': bool(transcribe_result.get('alignment_enabled', False)),
+                'diarization_enabled': bool(transcribe_result.get('diarization_enabled', False))
             }
         }
         
         # 准备回调数据
         callback_data = {
-            'text_info': transcribe_details,                               # 完整的转写详情
-            'effective_voice': transcribe_result.get('effective_voice', 0),    # 有效语音时长
-            'total_voice': transcribe_result.get('total_voice', 0),            # 音频总时长
-            'language': transcribe_result.get('language', 'unknown'),          # 识别的语言
-            'transcribe_details': transcribe_details                           # 保持向后兼容
+            'text_info': transcribe_details,
+            'effective_voice': safe_get_number(transcribe_result, 'effective_voice', 0.0),
+            'total_voice': safe_get_number(transcribe_result, 'total_voice', 0.0),
+            'language': safe_get_string(transcribe_result, 'language', 'unknown'),
+            'transcribe_details': transcribe_details
         }
+        
+        # 记录回调数据大小
+        callback_json = json.dumps(callback_data, ensure_ascii=False)
+        data_size = len(callback_json.encode('utf-8'))
+        logger.info(f"回调数据大小: {data_size} bytes ({data_size/1024:.1f} KB)")
         
         return self.send_callback(task_id, 4, 'success', callback_data)
     
