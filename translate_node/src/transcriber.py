@@ -570,6 +570,15 @@ class WhisperXTranscriber:
                             word['speaker'] = speaker_map[word_speaker]
             all_speakers = set(speaker_map.values())
 
+            # 兜底：没有speaker字段的都赋值为SPEAKER_UNKNOWN
+            for segment in all_segments:
+                if 'speaker' not in segment or not segment['speaker']:
+                    segment['speaker'] = "SPEAKER_UNKNOWN"
+                if 'words' in segment:
+                    for word in segment['words']:
+                        if 'speaker' not in word or not word['speaker']:
+                            word['speaker'] = "SPEAKER_UNKNOWN"
+
             logger.info(f"分块转写完成:")
             logger.info(f"- 总段落数: {len(all_segments)}")
             logger.info(f"- 文本长度: {len(full_text)}字符")
