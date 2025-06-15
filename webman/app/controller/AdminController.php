@@ -93,7 +93,7 @@ class AdminController
         $status = $request->post('status', ''); // 状态筛选
         $order_field = $request->post('order_field', 'create_time'); // 排序字段
         $order_type = $request->post('order_type', 'desc'); // 排序方式
-        $fields = $request->post('fields', 'id,username,nickname,role,status,create_time'); // 查询字段
+        $fields = $request->post('fields', 'id,username,nickname,role,status,create_time,update_time'); // 查询字段
         
         // 参数验证
         if ($page < 1) {
@@ -104,7 +104,7 @@ class AdminController
         }
         
         // 验证排序字段
-        $allowed_order_fields = ['id', 'username', 'nickname', 'role', 'status', 'create_time'];
+        $allowed_order_fields = ['id', 'username', 'nickname', 'role', 'status', 'create_time','update_time'];
         if (!in_array($order_field, $allowed_order_fields)) {
             $order_field = 'create_time';
         }
@@ -253,9 +253,22 @@ class AdminController
             
             $currentPage = $result->currentPage();
             $lastPage = $result->lastPage();
-            
+
+            // 新增：为每个任务项补充 username 字段
+            $list = $result->items();
+            $userIds = array_column($list, 'uid');
+            $usernames = [];
+            if (!empty($userIds)) {
+                $userModels = \app\api\model\User::whereIn('id', $userIds)->column('username', 'id');
+                $usernames = $userModels;
+            }
+            foreach ($list as &$item) {
+                $item['username'] = isset($usernames[$item['uid']]) ? $usernames[$item['uid']] : '';
+            }
+            unset($item);
+
             return jsons(200, '获取任务列表成功', [
-                'list' => $result->items(),
+                'list' => $list,
                 'total' => $result->total(),
                 'current_page' => $currentPage,
                 'per_page' => $result->listRows(),

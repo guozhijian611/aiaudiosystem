@@ -431,5 +431,169 @@ class TaskController
         return round($bytes, 2) . ' ' . $units[$pow];
     }
 
-    
+    /**
+     * 获取文件快速检测进度
+     */
+    public function getFileProgress(Request $request)
+    {
+        $taskId = $request->post('task_id');
+        if (empty($taskId)) return jsons(400, '任务ID不能为空');
+
+        $task = Task::where('id', $taskId)->find();
+        if (!$task) return jsons(400, '任务不存在');
+        $taskInfo = TaskInfo::where('tid', $taskId)->select();
+        //需要返回文件总数量，文件大小，文件总时长，预计检测时间，检测进度
+        $total = count($taskInfo);
+        $size = 0;
+        $total_voice = 0;
+        $progress = 0;
+        // 新增：size字符串转字节数
+        $parseSizeToBytes = function($sizeStr) {
+            if (preg_match('/([\\d.]+)\\s*(B|KB|MB|GB|TB)/i', $sizeStr, $matches)) {
+                $num = (float)$matches[1];
+                $unit = strtoupper($matches[2]);
+                switch ($unit) {
+                    case 'TB': $num *= 1024;
+                    case 'GB': $num *= 1024;
+                    case 'MB': $num *= 1024;
+                    case 'KB': $num *= 1024;
+                }
+                return (int)$num;
+            }
+            return 0;
+        };
+        foreach ($taskInfo as $item) {
+            $size += $parseSizeToBytes($item->size);
+            $total_voice += floatval($item->total_voice);
+            if ($item->fast_status == 1) { // 用 fast_status 判断进度
+                $progress++;
+            }
+        }
+        $progress_percent = $total > 0 ? ($progress / $total * 100) : 0;
+        $progress_percent = round($progress_percent, 2);
+        $size_info = round($size / 1024 / 1024, 2) . ' MB';
+        $duration_info = gmdate("H:i:s", (int)$total_voice);
+        $estimate_time = round($total_voice * 0.1);
+        $estimate_time_info = gmdate("H:i:s", $estimate_time);
+        return jsons(200, '获取文件检测进度成功', [
+            'total' => $total, // 文件总数量
+            'size' => $size, // 文件总大小(字节)
+            'size_info' => $size_info, // 文件总大小(MB)
+            'total_voice' => $total_voice, // 总时长(秒)
+            'duration_info' => $duration_info, // 总时长(时:分:秒)
+            'estimate_time' => $estimate_time, // 预计检测时间(秒)
+            'estimate_time_info' => $estimate_time_info, // 预计检测时间(时:分:秒)
+            'progress' => $progress_percent, // 检测进度百分比
+            'status' => $task->status // 任务状态: 1-空任务, 2-已检测, 3-已转写, 4-处理中, 5-暂停中
+        ]);
+    }
+
+    /**
+     * 获取文件转写进度
+     */
+    public function getFileTranscriptionProgress(Request $request)
+    {
+        $taskId = $request->post('task_id');
+        if (empty($taskId)) return jsons(400, '任务ID不能为空');
+
+        $task = Task::where('id', $taskId)->find();
+        if (!$task) return jsons(400, '任务不存在');
+        $taskInfo = TaskInfo::where('tid', $taskId)->select();
+        $total = count($taskInfo);
+        $progress = 0;
+        $total_voice = 0;
+        // 统计文件总大小
+        $parseSizeToBytes = function($sizeStr) {
+            if (preg_match('/([\\d.]+)\\s*(B|KB|MB|GB|TB)/i', $sizeStr, $matches)) {
+                $num = (float)$matches[1];
+                $unit = strtoupper($matches[2]);
+                switch ($unit) {
+                    case 'TB': $num *= 1024;
+                    case 'GB': $num *= 1024;
+                    case 'MB': $num *= 1024;
+                    case 'KB': $num *= 1024;
+                }
+                return (int)$num;
+            }
+            return 0;
+        };
+        $size = 0;
+        foreach ($taskInfo as $item) {
+            $size += $parseSizeToBytes($item->size);
+            $total_voice += floatval($item->total_voice);
+            if ($item->transcribe_status == 1) {
+                $progress++;
+            }
+        }
+        $size_info = round($size / 1024 / 1024, 2) . ' MB';
+        $progress_percent = $total > 0 ? ($progress / $total * 100) : 0;
+        $progress_percent = round($progress_percent, 2);
+        $duration_info = gmdate("H:i:s", (int)$total_voice);
+        $estimate_time = round($total_voice * 0.1); // 10%
+        $estimate_time_info = gmdate("H:i:s", $estimate_time);
+        return jsons(200, '获取文件转写进度成功', [
+            'total' => $total, // 文件总数量
+            'size' => $size, // 文件总大小(字节)
+            'size_info' => $size_info, // 文件总大小(MB)
+            'total_voice' => $total_voice, // 总时长(秒)
+            'duration_info' => $duration_info, // 总时长(时:分:秒)
+            'estimate_time' => $estimate_time, // 预计转写时间(秒)
+            'estimate_time_info' => $estimate_time_info, // 预计转写时间(时:分:秒)
+            'progress' => $progress_percent, // 转写进度百分比
+            'status' => $task->status // 任务状态: 1-空任务, 2-已检测, 3-已转写, 4-处理中, 5-暂停中
+        ]);
+    }
+
+    /**
+     * 获取任务统计
+     */
+    public function getTaskStatistics(Request $request)
+    {
+        $taskId = $request->post('task_id');
+        if (empty($taskId)) return jsons(400, '任务ID不能为空');
+
+        $task = Task::where('id', $taskId)->find();
+        if (!$task) return jsons(400, '任务不存在');
+        //需要返回总文件数，有效文件数，已转写文件数，已降噪文件数量
+        $taskInfo = TaskInfo::where('tid', $taskId)->select();
+        $total = count($taskInfo);
+        $valid = 0;
+        $valid_duration = 0;
+        $transcribed = 0;
+        $cleared = 0;
+        foreach ($taskInfo as $item) {
+            if (!empty($item->effective_voice) && floatval($item->effective_voice) > 0) {
+                $valid++;
+                $valid_duration += floatval($item->effective_voice);
+            }
+            if ($item->transcribe_status == 1) {
+                $transcribed++;
+            }
+            if ($item->is_clear == 1) {
+                $cleared++;
+            }
+        }
+        return jsons(200, '获取任务统计成功', [
+            'total' => $total, // 总文件数
+            'valid' => $valid, // 有效文件数
+            // 'valid_duration' => $valid_duration, // 有效时长(秒)
+            'transcribed' => $transcribed, // 已转写文件数
+            'cleared' => $cleared // 已降噪文件数量
+        ]);
+    }
+
+    /**
+     * 获取任务子文件详细信息
+     */
+    public function getTaskFileDetail(Request $request)
+    {
+        $taskInfoId = $request->post('task_info_id');
+        if (empty($taskInfoId)) return jsons(400, '任务子文件ID不能为空');
+
+        $taskInfo = TaskInfo::where('id', $taskInfoId)->find();
+        if (!$taskInfo) return jsons(400, '任务子文件不存在');
+
+        return jsons(200, '获取任务子文件详细信息成功', $taskInfo); 
+        
+    }
 }

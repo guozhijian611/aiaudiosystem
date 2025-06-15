@@ -49,6 +49,10 @@ Route::group('/task', function () {
     Route::post('/updateTask', [TaskController::class, 'updateTask']);
     Route::post('/upload', [TaskController::class, 'upload']);
     Route::post('/getTaskInfo', [TaskInfoController::class, 'getTaskInfo']);
+    Route::post('/getFileProgress', [TaskController::class, 'getFileProgress']);//获取文件快速检测进度
+    Route::post('/getFileTranscriptionProgress', [TaskController::class, 'getFileTranscriptionProgress']);//获取文件转写进度
+    Route::post('/getTaskStatistics', [TaskController::class, 'getTaskStatistics']);//获取任务统计
+    Route::post('/getTaskFileDetail', [TaskController::class, 'getTaskFileDetail']);//获取任务子文件详细信息
 });
 
 Route::group('/queue', function () {
