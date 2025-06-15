@@ -14,14 +14,11 @@ class Auth implements MiddlewareInterface
         //白名单内的路由不需要验证
         $whiteList = [
             '/',
-            '/test',
             '/user/login',
             '/user/logout',
-            '/queue/test',
-            '/queue/push',
             '/queue/callback',
             '/queue/upload',
-            '/queue/continue-transcribe',
+            '/queue/queueAction',
         ];
         // 如果是白名单内的路由，直接放行
         if (in_array($request->path(), $whiteList)) {

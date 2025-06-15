@@ -52,26 +52,12 @@ Route::group('/task', function () {
 });
 
 Route::group('/queue', function () {
-    // 队列任务管理接口
-    Route::post('/push', [QueueController::class, 'pushTaskToQueue']);
-    
-    // 单独推送任务接口
-    Route::post('/push-single', [QueueController::class, 'pushSingleTask']);
-    
-    // 批量推送任务接口
-    Route::post('/push-batch', [QueueController::class, 'pushBatchTasks']);
-    
+    // 统一入口方法
+    Route::post('/queueAction', [QueueController::class, 'queueAction']);
     // 队列任务回调接口（供节点调用）
     Route::post('/callback', [QueueController::class, 'handleTaskCallback']);
-    
-    // 文件上传接口（供节点调用）
-    Route::post('/upload', [QueueController::class, 'upload']);
-    
-    // 用户主动继续转写接口
-    Route::post('/continue-transcribe', [QueueController::class, 'continueToTranscribe']);
-    
-    // 测试接口
-    Route::post('/test', [QueueController::class, 'test']);
+    // 队列专用文件上传方法
+    Route::post('/upload', [QueueController::class, 'uploadFileForQueue']);
 });
 
 //拦截 404
