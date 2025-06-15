@@ -1,5 +1,5 @@
 # windows安装教程
-请提前安装好 php82，composer，git，redis，mysql8+，node，rabbitmq，miniconda，显卡驱动，vc++14 build tools
+请提前安装好 php82，ffmpeg,composer，git，redis，mysql8+，node，rabbitmq，miniconda，显卡驱动，vc++14 build tools
 ```bash
 # windows powershell运行执行脚本
 Set-ExecutionPolicy Unrestricted
