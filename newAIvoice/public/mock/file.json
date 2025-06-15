@@ -1,0 +1,21 @@
+{
+    "list": [
+        {
+            "filename": "文件1",
+            "filesize": "1M",
+            "time": "10min",
+            "effectivetime": "2min",
+            "language": "中文",
+            "status": "已检测"
+        },
+        {
+            "filename": "文件2",
+            "filesize": "2M",
+            "time": "20min",
+            "effectivetime": "4min",
+            "language": "英文",
+            "status": "未检测"
+        }
+    ],
+    "pageTotal": 2
+}
