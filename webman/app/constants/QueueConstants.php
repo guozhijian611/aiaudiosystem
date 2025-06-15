@@ -114,6 +114,11 @@ class QueueConstants
      */
     const STEP_PAUSED = 10;
 
+    /**
+     * 未降噪转写
+     * @const int
+     */
+    const STEP_UNCLEAR_TRANSCRIBE = 11;
     // ==================== 任务表状态常量 ====================
 
     /**
@@ -284,6 +289,7 @@ class QueueConstants
             self::STEP_ALL_COMPLETED => '所有处理完成',
             self::STEP_FAILED => '处理失败',
             self::STEP_PAUSED => '任务暂停',
+            self::STEP_UNCLEAR_TRANSCRIBE => '未降噪转写',
         ];
 
         return $descriptions[$step] ?? '未知状态';

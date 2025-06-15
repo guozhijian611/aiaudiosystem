@@ -424,13 +424,35 @@
             "dist": {
                 "type": "path",
                 "url": "/Volumes/project/webman-api-logs",
-                "reference": "525a5f626b989bc1110f1509a53271b019c09b3f"
+                "reference": "2df645cbf10fa0103725fb7b6af673e4c62b8e93"
+            },
+            "require": {
+                "monolog/monolog": "^2.0|^3.0",
+                "php": ">=8.0",
+                "topthink/think-orm": "^2.0|^3.0",
+                "workerman/webman-framework": "^1.0|^2.0"
             },
             "type": "library",
+            "extra": {
+                "webman": {
+                    "plugin": true
+                }
+            },
             "autoload": {
                 "psr-4": {
-                    "Saithink\\ThinkOrmLog\\": "src/"
+                    "Guozhijian611\\ThinkOrmLog\\": "src/"
                 }
+            },
+            "scripts": {
+                "post-package-install": [
+                    "Guozhijian611\\ThinkOrmLog\\Install::install"
+                ],
+                "post-package-update": [
+                    "Guozhijian611\\ThinkOrmLog\\Install::update"
+                ],
+                "pre-package-uninstall": [
+                    "Guozhijian611\\ThinkOrmLog\\Install::uninstall"
+                ]
             },
             "license": [
                 "MIT"
@@ -438,10 +460,17 @@
             "authors": [
                 {
                     "name": "guozhijian611",
-                    "email": "your-email@example.com"
+                    "email": "allen@gzj2001.com"
                 }
             ],
-            "description": "基于webman开发的ThinkOrm日志记录插件，增强版支持API日志",
+            "description": "基于webman开发的ThinkOrm日志记录插件，增强版支持API请求日志记录",
+            "keywords": [
+                "api",
+                "log",
+                "middleware",
+                "thinkorm",
+                "webman"
+            ],
             "transport-options": {
                 "relative": false
             }

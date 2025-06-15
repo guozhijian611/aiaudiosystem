@@ -15,6 +15,7 @@
 use support\Log;
 use support\Request;
 use app\process\Http;
+use app\process\Cut;
 
 global $argv;
 
@@ -58,5 +59,9 @@ return [
                 'enable_memory_monitor' => DIRECTORY_SEPARATOR === '/',
             ]
         ]
+    ],
+    'cut' => [
+        'handler' => Cut::class,
+        'count' => 1,
     ]
 ];
