@@ -189,9 +189,9 @@ class QueueConsumer:
             self.api_client.send_processing_callback(task_id)
             
             # quick_node使用clear_url（降噪后的音频URL）
-            file_url = task_info.get('clear_url')
+            file_url = task_info.get('voice_url')
             if not file_url:
-                raise ValueError("task_info中缺少clear_url字段")
+                raise ValueError("task_info中缺少voice_url字段")
             
             # 生成本地文件路径
             file_name = os.path.basename(file_url.split('?')[0])  # 去除URL参数

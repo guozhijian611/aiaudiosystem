@@ -57,7 +57,7 @@ Route::group('/queue', function () {
     // 队列任务回调接口（供节点调用）
     Route::post('/callback', [QueueController::class, 'handleTaskCallback']);
     // 队列专用文件上传方法
-    Route::post('/upload', [QueueController::class, 'uploadFileForQueue']);
+    Route::post('/upload', [QueueController::class, 'upload']);
 });
 
 //拦截 404

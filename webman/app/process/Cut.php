@@ -22,7 +22,6 @@ class Cut
     {
         // 只查找step=0（已上传/未处理）的任务，避免重复推送
         $tasks = TaskInfo::where('step', QueueConstants::STEP_UPLOADED)
-            ->whereNull('delete_time')
             ->select();
 
         if ($tasks->isEmpty()) {
