@@ -504,7 +504,20 @@ class WhisperXTranscriber:
                 try:
                     # 转写当前块
                     chunk_result = self._transcribe_chunk(chunk_audio, chunk_start_time, whisperx)
-                    
+
+                    # 新增：分块说话人分离
+                    if self.diarize_model:
+                        try:
+                            diarize_segments = self.diarize_model(
+                                chunk_audio,
+                                min_speakers=self.config.MIN_SPEAKERS,
+                                max_speakers=self.config.MAX_SPEAKERS
+                            )
+                            chunk_result = whisperx.assign_word_speakers(diarize_segments, chunk_result)
+                        except Exception as e:
+                            logger.warning(f"分块说话人分离失败: {e}")
+                            # 继续后续处理
+
                     # 合并结果
                     if chunk_result['segments']:
                         all_segments.extend(chunk_result['segments'])
@@ -537,13 +550,32 @@ class WhisperXTranscriber:
             # 合并所有文本
             full_text = ' '.join([segment['text'] for segment in all_segments])
             confidence_avg = sum(confidences) / len(confidences) if confidences else 0
-            
+
+            # 说话人编号归一化
+            speaker_map = {}
+            global_speaker_idx = 0
+            for segment in all_segments:
+                orig_speaker = segment.get('speaker')
+                if orig_speaker and orig_speaker not in speaker_map:
+                    speaker_map[orig_speaker] = f"SPEAKER_{global_speaker_idx:02d}"
+                    global_speaker_idx += 1
+            for segment in all_segments:
+                orig_speaker = segment.get('speaker')
+                if orig_speaker and orig_speaker in speaker_map:
+                    segment['speaker'] = speaker_map[orig_speaker]
+                if 'words' in segment:
+                    for word in segment['words']:
+                        word_speaker = word.get('speaker')
+                        if word_speaker and word_speaker in speaker_map:
+                            word['speaker'] = speaker_map[word_speaker]
+            all_speakers = set(speaker_map.values())
+
             logger.info(f"分块转写完成:")
             logger.info(f"- 总段落数: {len(all_segments)}")
             logger.info(f"- 文本长度: {len(full_text)}字符")
             logger.info(f"- 检测语言: {detected_language}")
             logger.info(f"- 说话人数: {len(all_speakers)}")
-            
+
             return {
                 'text': full_text,
                 'language': detected_language,
