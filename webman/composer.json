@@ -31,12 +31,6 @@
     "webman/console": "^2.1",
     "guozhijian611/thinkorm-log": "dev-main"
   },
-"repositories": [
-    {
-      "type": "path",
-      "url": "/Volumes/project/webman-api-logs"
-    }
-  ],
   "suggest": {
     "ext-event": "For better performance. "
   },

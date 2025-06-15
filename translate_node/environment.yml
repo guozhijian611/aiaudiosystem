@@ -11,8 +11,8 @@ dependencies:
   - transformers>=4.48.0
   - pip
   - pip:
-      - torch --index-url https://download.pytorch.org/whl/nightly/cu121
-      - torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+      # - torch --index-url https://download.pytorch.org/whl/nightly/cu121
+      # - torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
       - ctranslate2>=4.5.0
       - faster-whisper>=1.1.1
       - onnxruntime==1.19
