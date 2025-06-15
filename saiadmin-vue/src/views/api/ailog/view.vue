@@ -18,10 +18,10 @@
           <div v-text="formData?.log"></div>
         </a-descriptions-item>
         <a-descriptions-item label="任务类型">
-          <div v-text="formData?.task_type"></div>
+          <sa-dict :value="formData?.task_type" dict="node_type" render="span" />
         </a-descriptions-item>
         <a-descriptions-item label="状态">
-          <div v-text="formData?.status"></div>
+          <sa-dict :value="formData?.status" dict="log_status" render="span" />
         </a-descriptions-item>
         <a-descriptions-item label="消息">
           <div v-text="formData?.message"></div>

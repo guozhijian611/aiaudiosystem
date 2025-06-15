@@ -20,12 +20,12 @@
         </a-col>
         <a-col :sm="8" :xs="24">
           <a-form-item label="任务类型" field="task_type">
-            <a-input v-model="searchForm.task_type" placeholder="请输入任务类型" allow-clear />
+            <sa-select v-model="searchForm.task_type" dict="node_type" placeholder="请选择任务类型" allow-clear />
           </a-form-item>
         </a-col>
         <a-col :sm="8" :xs="24">
           <a-form-item label="状态" field="status">
-            <a-input v-model="searchForm.status" placeholder="请输入状态" allow-clear />
+            <sa-select v-model="searchForm.status" dict="log_status" placeholder="请选择状态" allow-clear />
           </a-form-item>
         </a-col>
         <a-col :sm="8" :xs="24">
@@ -113,8 +113,8 @@ const columns = reactive([
   { title:'ID', dataIndex:'id', width:180, sortable:{ sortDirections:['ascend', 'descend'] } },
   { title:'任务详情ID', dataIndex:'task_id', width:180 },
   { title:'日志信息', dataIndex:'log', width:180 },
-  { title:'任务类型', dataIndex:'task_type', width:180 },
-  { title:'状态', dataIndex:'status', width:180 },
+  { title:'任务类型', dataIndex:'task_type', type:'dict', dict:'node_type', width:180 },
+  { title:'状态', dataIndex:'status', type:'dict', dict:'log_status', width:180 },
   { title:'消息', dataIndex:'message', width:180 },
   { title:'创建时间', dataIndex:'create_time', width:180 },
 ])

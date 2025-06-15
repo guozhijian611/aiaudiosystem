@@ -38,7 +38,26 @@ class QueueController
         } else {
             return jsons(400, '请传入 taskinfo_id 或 task_id');
         }
-        return jsons(200, '推送完成', $results);
+        // 统计信息
+        $total = count($results);
+        $success = 0;
+        $failed = 0;
+        foreach ($results as $item) {
+            if ($item['status'] === 'success') {
+                $success++;
+            } else {
+                $failed++;
+            }
+        }
+        $stat = [
+            'total' => $total,
+            'success' => $success,
+            'failed' => $failed
+        ];
+        return jsons(200, '推送完成', [
+            'stat' => $stat,
+            'results' => $results
+        ]);
     }
 
     /**
@@ -80,7 +99,7 @@ class QueueController
                     if ($taskInfo->is_clear == QueueConstants::STATUS_YES && $taskInfo->transcribe_status == QueueConstants::STATUS_YES) {
                         return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '已降噪并转写，请勿重复提交'];
                     }
-                
+
                     $rabbitMQ->publishMessage(QueueConstants::QUEUE_TRANSCRIBE, [
                         'task_info' => $taskInfo->toArray()
                     ]);
@@ -107,6 +126,7 @@ class QueueController
         $message = $request->input('message', '');
         $data = $request->input('data', []);
 
+
         if (empty($taskId) || empty($taskType) || empty($status)) {
             return jsons(400, '缺少必要参数');
         }
@@ -115,7 +135,7 @@ class QueueController
         $aiLog->task_type = $taskType;
         $aiLog->status = $status;
         $aiLog->message = $message;
-        $aiLog->data = json_encode($data);
+        $aiLog->log = json_encode($data, JSON_UNESCAPED_UNICODE);
         $aiLog->save();
         $taskInfo = TaskInfo::find($taskId);
         if (!$taskInfo) {
@@ -141,7 +161,8 @@ class QueueController
                     break;
                 case QueueConstants::TASK_TYPE_TEXT_CONVERT:
                     $taskInfo->transcribe_status = QueueConstants::STATUS_YES;
-                    $taskInfo->text_info = $data['text_info'] ?? '';
+                    $taskInfo->language = $data['language'] ?? '';
+                    $taskInfo->text_info = isset($data['text_info']) ? json_encode($data['text_info'], JSON_UNESCAPED_UNICODE) : '';
                     if ($taskInfo->is_clear == QueueConstants::STATUS_YES) {
                         $taskInfo->step = QueueConstants::STEP_ALL_COMPLETED;
                     } else {
@@ -171,27 +192,26 @@ class QueueController
             if (empty($files)) {
                 return jsons(400, '请选择要上传的文件');
             }
-            
+
             // 获取任务类型（可选参数，用于文件类型验证）
             $taskType = $request->post('task_type');
-            
+
             // 只处理第一个文件（节点通常一次只上传一个处理结果文件）
             $file = reset($files);
             $fieldName = key($files);
-            
+
             // 上传文件
             $result = $this->uploadFileForQueue($file, $taskType);
-            
+
             return jsons(200, '文件上传成功', [
                 'field_name' => $fieldName,
                 'file_info' => $result
             ]);
-            
         } catch (\Exception $e) {
             return jsons(400, '文件上传失败：' . $e->getMessage());
         }
     }
-    
+
     /**
      * 队列专用文件上传方法
      * 
@@ -225,42 +245,42 @@ class QueueController
         // 获取上传配置
         $configLogic = new \plugin\saiadmin\app\logic\system\SystemConfigLogic();
         $uploadConfig = $configLogic->getGroup('upload_config');
-        
+
         // 检查文件大小
         $file_size = $file->getSize();
         $maxSize = \plugin\saiadmin\utils\Arr::getConfigValue($uploadConfig, 'upload_size') ?? 104857600; // 默认100MB
         if ($file_size > $maxSize) {
             throw new \Exception('文件大小超过限制');
         }
-        
+
         // 获取文件扩展名
         $ext = $file->getUploadExtension();
-        
+
         // 根据任务类型验证文件格式
         $this->validateFileForTaskType($ext, $taskType);
-        
+
         // 生成文件保存路径（使用queue子目录区分）
         $root = \plugin\saiadmin\utils\Arr::getConfigValue($uploadConfig, 'local_root') ?? 'public/storage/';
         $folder = 'queue/' . date('Ymd'); // 队列文件单独存放
         $fullDir = base_path() . DIRECTORY_SEPARATOR . $root . $folder . DIRECTORY_SEPARATOR;
-        
+
         if (!is_dir($fullDir)) {
             mkdir($fullDir, 0777, true);
         }
-        
+
         // 生成唯一文件名
         $hash = hash_file('sha1', $file->getRealPath());
         $objectName = $hash . '.' . $ext;
         $savePath = $fullDir . $objectName;
-        
+
         // 移动文件
         $file->move($savePath);
-        
+
         // 生成URL
         $domain = \plugin\saiadmin\utils\Arr::getConfigValue($uploadConfig, 'local_domain') ?? request()->host();
         $uri = \plugin\saiadmin\utils\Arr::getConfigValue($uploadConfig, 'local_uri') ?? '/storage/';
         $url = $domain . $uri . $folder . '/' . $objectName;
-        
+
         // 构建返回数据
         $result = [
             'storage_mode' => 1,
@@ -274,14 +294,14 @@ class QueueController
             'size_info' => $this->formatBytes($file_size),
             'url' => $url
         ];
-        
+
         // 保存到系统附件表（记录文件信息，便于管理）
         $attachment = new \plugin\saiadmin\app\model\system\SystemAttachment();
         $attachment->save($result);
-        
+
         return $result;
     }
-    
+
     /**
      * 根据任务类型验证文件格式
      * 
@@ -299,7 +319,7 @@ class QueueController
             }
             return;
         }
-        
+
         // 根据任务类型验证文件格式
         switch ($taskType) {
             case QueueConstants::TASK_TYPE_EXTRACT:
@@ -309,7 +329,7 @@ class QueueController
                     throw new \Exception('音频提取任务只支持音频文件格式：' . implode(', ', $audioExtensions));
                 }
                 break;
-                
+
             case QueueConstants::TASK_TYPE_CONVERT:
                 // 音频降噪结果：音频文件
                 $audioExtensions = ['mp3', 'wav', 'aac', 'flac', 'ogg', 'm4a', 'opus'];
@@ -317,7 +337,7 @@ class QueueController
                     throw new \Exception('音频降噪任务只支持音频文件格式：' . implode(', ', $audioExtensions));
                 }
                 break;
-                
+
             case QueueConstants::TASK_TYPE_FAST_RECOGNITION:
                 // 快速识别结果：文本文件
                 $textExtensions = ['txt', 'json'];
@@ -325,7 +345,7 @@ class QueueController
                     throw new \Exception('快速识别任务只支持文本文件格式：' . implode(', ', $textExtensions));
                 }
                 break;
-                
+
             case QueueConstants::TASK_TYPE_TEXT_CONVERT:
                 // 文本转写结果：文本文件
                 $textExtensions = ['txt', 'json'];
@@ -333,12 +353,12 @@ class QueueController
                     throw new \Exception('文本转写任务只支持文本文件格式：' . implode(', ', $textExtensions));
                 }
                 break;
-                
+
             default:
                 throw new \Exception('未知的任务类型：' . $taskType);
         }
     }
-    
+
     /**
      * 格式化文件大小
      * 

@@ -23,12 +23,12 @@
         </a-col>
         <a-col :span="24">
           <a-form-item label="任务类型" field="task_type">
-            <a-input v-model="formData.task_type" placeholder="请输入任务类型" />
+            <sa-select v-model="formData.task_type" dict="node_type" placeholder="请选择任务类型" allow-clear />
           </a-form-item>
         </a-col>
         <a-col :span="24">
           <a-form-item label="状态" field="status">
-            <a-input v-model="formData.status" placeholder="请输入状态" />
+            <sa-select v-model="formData.status" dict="log_status" placeholder="请选择状态" allow-clear />
           </a-form-item>
         </a-col>
         <a-col :span="24">
