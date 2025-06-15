@@ -94,7 +94,7 @@ class QueueController
                 case 4: // transcribe
                     if ($taskInfo->step == QueueConstants::STEP_TRANSCRIBING) {
                         return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '正在转写，请勿重复提交'];
-        }
+                     }
                     //已经降噪了 也转写了
                     if ($taskInfo->is_clear == QueueConstants::STATUS_YES && $taskInfo->transcribe_status == QueueConstants::STATUS_YES) {
                         return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '已降噪并转写，请勿重复提交'];
