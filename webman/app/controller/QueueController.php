@@ -4,6 +4,7 @@ namespace app\controller;
 
 use support\Request;
 use app\api\model\TaskInfo;
+use app\api\model\AiLog;
 use app\service\RabbitMQ;
 use app\constants\QueueConstants;
 
@@ -13,29 +14,31 @@ use app\constants\QueueConstants;
 class QueueController
 {
     /**
-     * 统一入口方法，支持传 task_id（批量）或 taskinfo_id（单个）
+     * 统一入口方法，支持传 task_id（批量/单个）或 taskinfo_id（批量/单个）
      * action: 2=clear，3=quick，4=transcribe
      */
     public function queueAction(Request $request)
     {
-        $taskinfoId = $request->input('taskinfo_id');
-        $taskId = $request->input('task_id');
+        $taskinfoIds = (array)$request->input('taskinfo_id', []);
+        $taskIds = (array)$request->input('task_id', []);
         $action = (int)$request->input('action');
         $results = [];
-        if ($taskinfoId) {
-            $taskInfos = [TaskInfo::find($taskinfoId)];
-        } elseif ($taskId) {
-            $taskInfos = TaskInfo::where('tid', $taskId)->select();
+        if (!empty($taskinfoIds)) {
+            foreach ($taskinfoIds as $tid) {
+                $taskInfo = TaskInfo::find($tid);
+                $results[] = $this->processSingleTaskInfo($taskInfo, $action);
+            }
+        } elseif (!empty($taskIds)) {
+            foreach ($taskIds as $taskId) {
+                $taskInfos = TaskInfo::where('tid', $taskId)->select();
+                foreach ($taskInfos as $taskInfo) {
+                    $results[] = $this->processSingleTaskInfo($taskInfo, $action);
+                }
+            }
         } else {
             return jsons(400, '请传入 taskinfo_id 或 task_id');
         }
-        if (empty($taskInfos) || (is_array($taskInfos) && count($taskInfos) === 0)) {
-            return jsons(400, '未找到任何子文件');
-        }
-        foreach ($taskInfos as $taskInfo) {
-            $results[] = $this->processSingleTaskInfo($taskInfo, $action);
-        }
-        return jsons(200, '批量推送完成', $results);
+        return jsons(200, '推送完成', $results);
     }
 
     /**
@@ -133,6 +136,7 @@ class QueueController
                     break;
                 case QueueConstants::TASK_TYPE_FAST_RECOGNITION:
                     $taskInfo->fast_status = QueueConstants::STATUS_YES;
+                    $taskInfo->effective_voice = $data['effective_voice'] ?? '';
                     $taskInfo->step = QueueConstants::STEP_FAST_COMPLETED;
                     break;
                 case QueueConstants::TASK_TYPE_TEXT_CONVERT:
@@ -151,6 +155,13 @@ class QueueController
             $taskInfo->retry_count += 1;
             $taskInfo->step = QueueConstants::STEP_FAILED;
         }
+        $aiLog = new AiLog();
+        $aiLog->task_id = $taskId;
+        $aiLog->task_type = $taskType;
+        $aiLog->status = $status;
+        $aiLog->message = $message;
+        $aiLog->data = $data;
+        $aiLog->save();
         $taskInfo->save();
         return jsons(200, '回调处理成功');
     }
