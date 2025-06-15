@@ -121,12 +121,17 @@ class QueueConsumer:
             if not task_id:
                 raise ValueError("task_info中缺少id字段")
             
-            # translate_node使用clear_url（降噪后的音频URL）
-            voice_url = task_info.get('clear_url')
+            # 判断使用哪个音频URL
+            if task_info.get('is_clear', 0) == 1 and task_info.get('clear_url'):
+                voice_url = task_info.get('clear_url')
+                url_type = 'clear_url'
+            else:
+                voice_url = task_info.get('voice_url')
+                url_type = 'voice_url'
             if not voice_url:
-                raise ValueError("task_info中缺少clear_url字段，请先完成音频降噪")
+                raise ValueError(f"task_info中缺少{url_type}字段，无法进行转写")
             
-            logger.info(f"收到转写任务: task_id={task_id}, clear_url={voice_url}")
+            logger.info(f"收到转写任务: task_id={task_id}, {url_type}={voice_url}")
             logger.info(f"任务详情: 文件名={task_info.get('filename', 'N/A')}, "
                        f"是否已降噪={task_info.get('is_clear', 0)}")
             

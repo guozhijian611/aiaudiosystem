@@ -53,9 +53,6 @@ class QueueController
         try {
             switch ($action) {
                 case 2: // clear
-                    if (!in_array($taskInfo->step, [QueueConstants::STEP_EXTRACT_COMPLETED, 11])) {
-                        return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '当前状态不允许降噪'];
-                    }
                     if ($taskInfo->is_clear == QueueConstants::STATUS_YES || $taskInfo->step == QueueConstants::STEP_CLEARING) {
                         return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '已降噪或正在降噪，请勿重复提交'];
                     }
@@ -66,9 +63,6 @@ class QueueController
                     $taskInfo->save();
                     return ['id' => $taskInfo->id, 'status' => 'success', 'msg' => '已推送到降噪队列'];
                 case 3: // quick
-                    if (!in_array($taskInfo->step, [QueueConstants::STEP_CLEAR_COMPLETED, QueueConstants::STEP_EXTRACT_COMPLETED])) {
-                        return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '当前状态不允许快速识别'];
-                    }
                     if ($taskInfo->fast_status == QueueConstants::STATUS_YES || $taskInfo->step == QueueConstants::STEP_FAST_RECOGNIZING) {
                         return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '已识别或正在识别，请勿重复提交'];
                     }
@@ -79,15 +73,14 @@ class QueueController
                     $taskInfo->save();
                     return ['id' => $taskInfo->id, 'status' => 'success', 'msg' => '已推送到快速识别队列'];
                 case 4: // transcribe
-                    if ($taskInfo->step == QueueConstants::STEP_EXTRACT_COMPLETED && $taskInfo->is_clear != QueueConstants::STATUS_YES) {
-                        $taskInfo->step = 11; // 未降噪转写
+                    if ($taskInfo->step == QueueConstants::STEP_TRANSCRIBING) {
+                        return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '正在转写，请勿重复提交'];
                     }
-                    if (!in_array($taskInfo->step, [QueueConstants::STEP_CLEAR_COMPLETED, QueueConstants::STEP_FAST_COMPLETED, 11])) {
-                        return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '当前状态不允许转写'];
+                    //已经降噪了 也转写了
+                    if ($taskInfo->is_clear == QueueConstants::STATUS_YES && $taskInfo->transcribe_status == QueueConstants::STATUS_YES) {
+                        return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '已降噪并转写，请勿重复提交'];
                     }
-                    if ($taskInfo->transcribe_status == QueueConstants::STATUS_YES || $taskInfo->step == QueueConstants::STEP_TRANSCRIBING) {
-                        return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '已转写或正在转写，请勿重复提交'];
-                    }
+                
                     $rabbitMQ->publishMessage(QueueConstants::QUEUE_TRANSCRIBE, [
                         'task_info' => $taskInfo->toArray()
                     ]);
@@ -117,6 +110,13 @@ class QueueController
         if (empty($taskId) || empty($taskType) || empty($status)) {
             return jsons(400, '缺少必要参数');
         }
+        $aiLog = new AiLog();
+        $aiLog->task_id = $taskId;
+        $aiLog->task_type = $taskType;
+        $aiLog->status = $status;
+        $aiLog->message = $message;
+        $aiLog->data = json_encode($data);
+        $aiLog->save();
         $taskInfo = TaskInfo::find($taskId);
         if (!$taskInfo) {
             return jsons(400, '任务不存在');
@@ -155,13 +155,7 @@ class QueueController
             $taskInfo->retry_count += 1;
             $taskInfo->step = QueueConstants::STEP_FAILED;
         }
-        $aiLog = new AiLog();
-        $aiLog->task_id = $taskId;
-        $aiLog->task_type = $taskType;
-        $aiLog->status = $status;
-        $aiLog->message = $message;
-        $aiLog->data = $data;
-        $aiLog->save();
+
         $taskInfo->save();
         return jsons(200, '回调处理成功');
     }
