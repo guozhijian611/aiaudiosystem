@@ -12,7 +12,7 @@ class Cut
     public function onWorkerStart()
     {
         // 每10秒扫描一次
-        Timer::add(10, function () {
+        Timer::add(1, function () {
             $this->scanAndPush();
         });
     }
