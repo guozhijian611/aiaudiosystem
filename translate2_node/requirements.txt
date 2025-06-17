@@ -31,4 +31,13 @@ resampy>=0.4.0
 numpy>=2.0.2
 pandas>=2.2.3
 scipy>=1.10.0
-scikit-learn>=1.3.0 
+scikit-learn>=1.3.0
+
+# Whisper-Diarization 专用依赖
+wget
+nemo_toolkit[asr]==2.0.0rc0
+nltk
+faster-whisper>=1.1.0
+git+https://github.com/MahmoudAshraf97/demucs.git
+git+https://github.com/oliverguhr/deepmultilingualpunctuation.git
+git+https://github.com/MahmoudAshraf97/ctc-forced-aligner.git 
