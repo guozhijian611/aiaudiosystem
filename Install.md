@@ -14,7 +14,7 @@ composer install
 
 # 修改env里面的数据库信息，然后记得导入一下数据库
 #启动 webman后端，这里用windows的来展示
-php windows.php
+php -d memory_limit=1024M windows.php start
 
 
 #2. 启动中台服务
