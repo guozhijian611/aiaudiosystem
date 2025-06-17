@@ -135,9 +135,9 @@ class WhisperDiarizationTranscriber:
             
             # 执行转写
             if self.model == "script_mode" and self.config.ENABLE_DIARIZATION:
-                result = self._transcribe_with_diarization_script(audio_path)
+                result = self._transcribe_with_diarization_script(audio_path, timeout)
             else:
-                result = self._transcribe_with_whisper(audio_path)
+                result = self._transcribe_with_whisper(audio_path, timeout)
             
             # 计算处理时间
             process_time = time.time() - start_time
@@ -162,7 +162,7 @@ class WhisperDiarizationTranscriber:
             logger.error(f"音频转写失败: {e}")
             raise
     
-    def _transcribe_with_diarization_script(self, audio_path: str) -> Dict:
+    def _transcribe_with_diarization_script(self, audio_path: str, timeout: int = None) -> Dict:
         """使用 Whisper-Diarization 脚本进行转写"""
         try:
             # 检查 HF_TOKEN
@@ -182,8 +182,9 @@ class WhisperDiarizationTranscriber:
                 '--batch-size', str(self.config.WHISPER_BATCH_SIZE)
             ]
             
-            # 添加语言参数
-            if self.config.WHISPER_LANGUAGE:
+            # 添加语言参数（只有当明确指定语言时才添加）
+            if (self.config.WHISPER_LANGUAGE and 
+                self.config.WHISPER_LANGUAGE.lower() not in ['auto', 'none', 'null', '']):
                 cmd.extend(['--language', self.config.WHISPER_LANGUAGE])
             
             # 添加其他参数
@@ -404,7 +405,7 @@ class WhisperDiarizationTranscriber:
             logger.error(f"解析输出文本失败: {e}")
             raise
     
-    def _transcribe_with_whisper(self, audio_path: str) -> Dict:
+    def _transcribe_with_whisper(self, audio_path: str, timeout: int = None) -> Dict:
         """使用基础 Whisper 进行转写"""
         try:
             # 执行转写
