@@ -42,6 +42,10 @@ pip install git+https://github.com/MahmoudAshraf97/demucs.git
 pip install git+https://github.com/oliverguhr/deepmultilingualpunctuation.git
 pip install git+https://github.com/MahmoudAshraf97/ctc-forced-aligner.git
 
+# 修复 huggingface_hub 版本兼容性问题
+echo "修复 huggingface_hub 版本兼容性问题..."
+python fix_huggingface_hub.py
+
 # 检查 Whisper-Diarization 目录
 if [ ! -d "whisper-diarization" ]; then
     echo "克隆 Whisper-Diarization 仓库..."
