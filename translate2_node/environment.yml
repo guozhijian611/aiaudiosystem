@@ -14,14 +14,10 @@ dependencies:
   - pytorch-cuda=11.8  
   - pip  
   - pip:  
-    # 先安装sentencepiece的预编译版本  
-    - sentencepiece==0.1.99  # 使用较旧但稳定的版本  
+    # 核心依赖  
     - faster-whisper>=1.1.0  
     - ctranslate2==4.4.0  
-    - "nemo-toolkit[asr]>=2.dev"  
-    - git+https://github.com/MahmoudAshraf97/demucs.git  
-    - git+https://github.com/oliverguhr/deepmultilingualpunctuation.git  
-    - git+https://github.com/MahmoudAshraf97/ctc-forced-aligner.git  
+    - sentencepiece==0.1.99  
     - omegaconf  
     - wget  
-    - nltk
+    - nltk  
