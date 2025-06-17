@@ -6,40 +6,22 @@ channels:
   - defaults  
   
 dependencies:  
-  # Python版本  
   - python>=3.10  
-    
-  # 系统依赖  
   - ffmpeg  
   - cython  
-    
-  # PyTorch生态系统  
   - pytorch  
   - torchaudio  
-  - pytorch-cuda=11.8  # 或者根据你的CUDA版本调整  
-    
-  # 通过pip安装的包  
+  - pytorch-cuda=11.8  
   - pip  
   - pip:  
-    # 核心依赖  
+    # 先安装sentencepiece的预编译版本  
+    - sentencepiece==0.1.99  # 使用较旧但稳定的版本  
     - faster-whisper>=1.1.0  
     - ctranslate2==4.4.0  
     - "nemo-toolkit[asr]>=2.dev"  
-      
-    # Git依赖包  
     - git+https://github.com/MahmoudAshraf97/demucs.git  
     - git+https://github.com/oliverguhr/deepmultilingualpunctuation.git  
     - git+https://github.com/MahmoudAshraf97/ctc-forced-aligner.git  
-      
-    # 其他Python依赖  
     - omegaconf  
     - wget  
-    - nltk  
-    - torch  
-    - torchaudio  
-    - logging  
-    - argparse  
-    - json  
-    - shutil  
-    - os  
-    - re
+    - nltk
