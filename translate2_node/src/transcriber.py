@@ -171,6 +171,28 @@ class WhisperDiarizationTranscriber:
                 # 使用基础 Whisper 模式
                 return self._transcribe_with_whisper(audio_path)
             
+            # 检查 NeMo 版本兼容性
+            try:
+                import nemo
+                logger.info(f"NeMo 版本: {nemo.__version__}")
+                
+                # 检查是否有 NeuralDiarizer
+                try:
+                    from nemo.collections.asr.models.msdd_models import NeuralDiarizer
+                    logger.info("NeuralDiarizer 可用")
+                except ImportError:
+                    logger.warning("NeuralDiarizer 不可用，尝试使用 ClusteringDiarizer")
+                    try:
+                        from nemo.collections.asr.models import ClusteringDiarizer
+                        logger.info("ClusteringDiarizer 可用")
+                    except ImportError:
+                        logger.warning("未找到可用的说话人分离模块，将使用基础 Whisper")
+                        return self._transcribe_with_whisper(audio_path)
+                        
+            except ImportError:
+                logger.warning("NeMo 不可用，将使用基础 Whisper")
+                return self._transcribe_with_whisper(audio_path)
+            
             # 构建命令
             diarize_script = os.path.join(self.whisper_diarization_path, 'diarize.py')
             cmd = [
@@ -204,17 +226,21 @@ class WhisperDiarizationTranscriber:
             
             if result.returncode != 0:
                 logger.error(f"Whisper-Diarization 脚本执行失败: {result.stderr}")
-                raise Exception(f"脚本执行失败: {result.stderr}")
+                # 如果脚本失败，回退到基础 Whisper
+                logger.info("回退到基础 Whisper 模式")
+                return self._transcribe_with_whisper(audio_path)
             
             # 解析输出
             return self._parse_diarization_output(result.stdout, audio_path)
             
         except subprocess.TimeoutExpired:
             logger.error("Whisper-Diarization 脚本执行超时")
-            raise Exception("转写超时")
+            logger.info("回退到基础 Whisper 模式")
+            return self._transcribe_with_whisper(audio_path)
         except Exception as e:
             logger.error(f"Whisper-Diarization 脚本转写失败: {e}")
-            raise
+            logger.info("回退到基础 Whisper 模式")
+            return self._transcribe_with_whisper(audio_path)
     
     def _parse_diarization_output(self, output: str, audio_path: str) -> Dict:
         """解析 Whisper-Diarization 脚本输出"""
