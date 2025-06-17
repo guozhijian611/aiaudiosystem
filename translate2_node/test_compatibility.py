@@ -33,6 +33,20 @@ def test_imports():
         except ImportError as e:
             print(f"✗ {name}: 导入失败 - {e}")
     
+    # 测试 torchaudio
+    print("\ntorchaudio 测试:")
+    try:
+        import torchaudio
+        print(f"✓ torchaudio: {torchaudio.__version__}")
+    except ImportError as e:
+        print(f"✗ torchaudio: 导入失败 - {e}")
+        print("建议运行: python fix_torchaudio.py")
+        return False
+    except Exception as e:
+        print(f"⚠ torchaudio: 导入异常 - {e}")
+        print("建议运行: python fix_torchaudio.py")
+        return False
+    
     # 测试 NeMo
     print("\nNeMo 模块测试:")
     try:
@@ -76,6 +90,7 @@ def test_imports():
     print("\n" + "=" * 60)
     print("兼容性测试完成")
     print("=" * 60)
+    return True
 
 def test_transcriber():
     """测试转写器"""
@@ -101,6 +116,15 @@ def test_transcriber():
     except ImportError as e:
         print(f"✗ 转写器导入失败: {e}")
 
+def main():
+    """主函数"""
+    # 先测试基础导入
+    if test_imports():
+        # 如果基础测试通过，再测试转写器
+        test_transcriber()
+    else:
+        print("\n基础模块测试失败，请先修复问题")
+        print("建议运行: python fix_torchaudio.py")
+
 if __name__ == "__main__":
-    test_imports()
-    test_transcriber() 
+    main() 
