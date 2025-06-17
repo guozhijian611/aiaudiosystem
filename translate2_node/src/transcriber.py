@@ -17,6 +17,7 @@ import platform
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from logger import logger
+import re
 
 # 添加项目路径
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
@@ -121,20 +122,38 @@ class WhisperDiarizationTranscriber:
             # 添加 whisper-diarization 路径到 Python 路径
             sys.path.insert(0, self.whisper_diarization_path)
             
-            # 尝试导入自定义的 whisper-diarization 模块
-            from diarization_module import DiarizationPipeline
-            logger.info("成功导入 whisper-diarization 模块")
-            
-            # 初始化说话人分离管道
-            self.diarization_pipeline = DiarizationPipeline(
-                use_auth_token=self.config.HF_TOKEN,
-                device=self.device
+            # 尝试导入必要的模块（基于 Jupyter Notebook 教程）
+            import faster_whisper
+            from nemo.collections.asr.models.msdd_models import NeuralDiarizer
+            from deepmultilingualpunctuation import PunctuationModel
+            from ctc_forced_aligner import (
+                load_alignment_model,
+                generate_emissions,
+                preprocess_text,
+                get_alignments,
+                get_spans,
+                postprocess_results,
             )
+            # 导入 helpers 模块
+            from helpers import (
+                create_config,
+                get_words_speaker_mapping,
+                get_realigned_ws_mapping_with_punctuation,
+                get_sentences_speaker_mapping,
+                langs_to_iso,
+                punct_model_langs,
+                find_numeral_symbol_tokens,
+            )
+            
+            logger.info("成功导入 whisper-diarization 相关模块")
+            
+            # 标记为可用
+            self.diarization_available = True
             
             # 同时初始化基础 Whisper 模型
             self._init_fallback_model()
             
-            logger.info("whisper-diarization 模块初始化成功")
+            logger.info("whisper-diarization 功能初始化成功")
             
         except ImportError as e:
             logger.error(f"无法导入 whisper-diarization 模块: {e}")
@@ -192,7 +211,7 @@ class WhisperDiarizationTranscriber:
             logger.info(f"音频文件大小: {self._format_size(file_size)}")
             
             # 执行转写 - 必须使用高级功能
-            if hasattr(self, 'diarization_pipeline') and self.config.ENABLE_DIARIZATION:
+            if hasattr(self, 'diarization_available') and self.config.ENABLE_DIARIZATION:
                 result = self._transcribe_with_diarization_module(audio_path, timeout)
             else:
                 raise Exception("高级功能不可用，无法进行转写")
@@ -208,10 +227,10 @@ class WhisperDiarizationTranscriber:
                 'file_size': file_size,
                 'model': self.config.WHISPER_MODEL,
                 'device': self.device,
-                'diarization_enabled': hasattr(self, 'diarization_pipeline') and self.config.ENABLE_DIARIZATION,
+                'diarization_enabled': hasattr(self, 'diarization_available') and self.config.ENABLE_DIARIZATION,
                 'vad_enabled': self.config.ENABLE_VAD,
                 'titanet_enabled': self.config.ENABLE_TITANET,
-                'whisper_diarization_available': hasattr(self, 'diarization_pipeline')
+                'whisper_diarization_available': hasattr(self, 'diarization_available')
             }
             
             return result
@@ -221,88 +240,249 @@ class WhisperDiarizationTranscriber:
             raise
     
     def _transcribe_with_diarization_module(self, audio_path: str, timeout: int = None) -> Dict:
-        """使用 whisper-diarization 模块进行转写"""
+        """使用 whisper-diarization 功能进行转写（基于官方 Jupyter Notebook）"""
         try:
             # 检查 HF_TOKEN
             if self.config.ENABLE_DIARIZATION and not self.config.HF_TOKEN:
                 raise Exception("未配置 HF_TOKEN，说话人分离功能无法使用")
             
-            logger.info("使用 whisper-diarization 模块进行转写...")
+            # 设置 HF_TOKEN
+            os.environ["HF_TOKEN"] = self.config.HF_TOKEN
+            
+            logger.info("使用 whisper-diarization 功能进行转写...")
+            
+            # 导入必要的模块
+            import faster_whisper
+            import torchaudio
+            from nemo.collections.asr.models.msdd_models import NeuralDiarizer
+            from deepmultilingualpunctuation import PunctuationModel
+            from ctc_forced_aligner import (
+                load_alignment_model,
+                generate_emissions,
+                preprocess_text,
+                get_alignments,
+                get_spans,
+                postprocess_results,
+            )
+            from helpers import (
+                create_config,
+                get_words_speaker_mapping,
+                get_realigned_ws_mapping_with_punctuation,
+                get_sentences_speaker_mapping,
+                langs_to_iso,
+                punct_model_langs,
+                find_numeral_symbol_tokens,
+            )
+            
+            # 设置参数
+            mtypes = {"cpu": "int8", "cuda": "float16"}
             
             # 处理语言参数
             language = self.config.WHISPER_LANGUAGE
             if language and language.lower() in ['auto', 'none', 'null', '']:
                 language = None  # 让 Whisper 自动检测语言
             
-            # 调用 whisper-diarization 模块
-            result = self.diarization_pipeline(
-                audio_path,
-                whisper_model=self.config.WHISPER_MODEL,
-                language=language,
-                batch_size=self.config.WHISPER_BATCH_SIZE,
-                vad=self.config.ENABLE_VAD,
-                min_speakers=self.config.MIN_SPEAKERS,
-                max_speakers=self.config.MAX_SPEAKERS
+            # 1. 音频预处理（人声分离）
+            if self.config.ENABLE_VAD:
+                # 使用 demucs 分离人声
+                return_code = os.system(
+                    f'python -m demucs.separate -n htdemucs --two-stems=vocals "{audio_path}" -o temp_outputs --device "{self.device}"'
+                )
+                
+                if return_code != 0:
+                    logger.warning("音频分离失败，使用原始音频")
+                    vocal_target = audio_path
+                else:
+                    vocal_target = os.path.join(
+                        "temp_outputs",
+                        "htdemucs",
+                        os.path.splitext(os.path.basename(audio_path))[0],
+                        "vocals.wav",
+                    )
+            else:
+                vocal_target = audio_path
+            
+            # 2. Whisper 转写
+            logger.info("开始 Whisper 转写...")
+            whisper_model = faster_whisper.WhisperModel(
+                self.config.WHISPER_MODEL, 
+                device=self.device, 
+                compute_type=mtypes[self.device]
+            )
+            whisper_pipeline = faster_whisper.BatchedInferencePipeline(whisper_model)
+            audio_waveform = faster_whisper.decode_audio(vocal_target)
+            
+            suppress_tokens = (
+                find_numeral_symbol_tokens(whisper_model.hf_tokenizer)
+                if hasattr(self.config, 'SUPPRESS_NUMERALS') and self.config.SUPPRESS_NUMERALS
+                else [-1]
             )
             
-            # 格式化结果
-            return self._format_diarization_result(result)
+            if self.config.WHISPER_BATCH_SIZE > 0:
+                transcript_segments, info = whisper_pipeline.transcribe(
+                    audio_waveform,
+                    language,
+                    suppress_tokens=suppress_tokens,
+                    batch_size=self.config.WHISPER_BATCH_SIZE,
+                )
+            else:
+                transcript_segments, info = whisper_model.transcribe(
+                    audio_waveform,
+                    language,
+                    suppress_tokens=suppress_tokens,
+                    vad_filter=True,
+                )
+            
+            full_transcript = "".join(segment.text for segment in transcript_segments)
+            
+            # 清理内存
+            del whisper_model, whisper_pipeline
+            torch.cuda.empty_cache()
+            
+            # 3. 强制对齐
+            logger.info("开始强制对齐...")
+            alignment_model, alignment_tokenizer = load_alignment_model(
+                self.device,
+                dtype=torch.float16 if self.device == "cuda" else torch.float32,
+            )
+            
+            emissions, stride = generate_emissions(
+                alignment_model,
+                torch.from_numpy(audio_waveform)
+                .to(alignment_model.dtype)
+                .to(alignment_model.device),
+                batch_size=self.config.WHISPER_BATCH_SIZE,
+            )
+            
+            del alignment_model
+            torch.cuda.empty_cache()
+            
+            tokens_starred, text_starred = preprocess_text(
+                full_transcript,
+                romanize=True,
+                language=langs_to_iso.get(info.language, info.language),
+            )
+            
+            segments, scores, blank_token = get_alignments(
+                emissions,
+                tokens_starred,
+                alignment_tokenizer,
+            )
+            
+            spans = get_spans(tokens_starred, segments, blank_token)
+            word_timestamps = postprocess_results(text_starred, spans, stride, scores)
+            
+            # 4. 说话人分离
+            logger.info("开始说话人分离...")
+            # 转换音频为单声道
+            ROOT = os.getcwd()
+            temp_path = os.path.join(ROOT, "temp_outputs")
+            os.makedirs(temp_path, exist_ok=True)
+            torchaudio.save(
+                os.path.join(temp_path, "mono_file.wav"),
+                torch.from_numpy(audio_waveform).unsqueeze(0).float(),
+                16000,
+                channels_first=True,
+            )
+            
+            # 初始化 NeMo MSDD 说话人分离模型
+            msdd_model = NeuralDiarizer(cfg=create_config(temp_path)).to(self.device)
+            msdd_model.diarize()
+            
+            del msdd_model
+            torch.cuda.empty_cache()
+            
+            # 5. 读取说话人时间戳
+            speaker_ts = []
+            rttm_file = os.path.join(temp_path, "pred_rttms", "mono_file.rttm")
+            with open(rttm_file, "r") as f:
+                lines = f.readlines()
+                for line in lines:
+                    line_list = line.split(" ")
+                    s = int(float(line_list[5]) * 1000)
+                    e = s + int(float(line_list[8]) * 1000)
+                    speaker_ts.append([s, e, int(line_list[11].split("_")[-1])])
+            
+            # 6. 生成词级说话人映射
+            wsm = get_words_speaker_mapping(word_timestamps, speaker_ts, "start")
+            
+            # 7. 标点符号恢复
+            if info.language in punct_model_langs:
+                logger.info("恢复标点符号...")
+                punct_model = PunctuationModel(model="kredor/punctuate-all")
+                words_list = list(map(lambda x: x["word"], wsm))
+                labled_words = punct_model.predict(words_list, chunk_size=230)
+                
+                ending_puncts = ".?!"
+                model_puncts = ".,;:!?"
+                is_acronym = lambda x: re.fullmatch(r"\b(?:[a-zA-Z]\.){2,}", x)
+                
+                for word_dict, labeled_tuple in zip(wsm, labled_words):
+                    word = word_dict["word"]
+                    if (
+                        word
+                        and labeled_tuple[1] in ending_puncts
+                        and (word[-1] not in model_puncts or is_acronym(word))
+                    ):
+                        word += labeled_tuple[1]
+                        if word.endswith(".."):
+                            word = word.rstrip(".")
+                        word_dict["word"] = word
+            else:
+                logger.warning(f"语言 {info.language} 不支持标点符号恢复")
+            
+            # 8. 重新对齐和生成句子级说话人映射
+            wsm = get_realigned_ws_mapping_with_punctuation(wsm)
+            ssm = get_sentences_speaker_mapping(wsm, speaker_ts)
+            
+            # 9. 格式化结果
+            return self._format_diarization_result_from_ssm(ssm, info)
             
         except Exception as e:
-            logger.error(f"whisper-diarization 模块转写失败: {e}")
+            logger.error(f"whisper-diarization 转写失败: {e}")
             raise Exception(f"高级功能转写失败: {e}")
     
-    def _format_diarization_result(self, result) -> Dict:
-        """格式化 whisper-diarization 结果"""
-        try:
-            # 根据 whisper-diarization 的输出格式进行解析
-            # 这里需要根据实际的输出格式进行调整
-            
-            formatted_result = {
-                'text': '',
-                'language': 'unknown',
-                'segments': [],
-                'speakers': {},
-                'summary': {
-                    'total_duration': 0,
-                    'total_segments': 0,
-                    'total_speakers': 0
-                }
+    def _format_diarization_result_from_ssm(self, ssm, info) -> Dict:
+        """从句子级说话人映射格式化结果"""
+        result = {
+            'text': '',
+            'language': info.language,
+            'segments': [],
+            'speakers': {},
+            'summary': {
+                'total_duration': 0,
+                'total_segments': 0,
+                'total_speakers': 0
             }
+        }
+        
+        # 处理段落
+        for i, (speaker, sentence) in enumerate(ssm):
+            segment = {
+                'id': i,
+                'start': sentence['start_time'] / 1000.0,  # 转换为秒
+                'end': sentence['end_time'] / 1000.0,
+                'text': sentence['text'].strip(),
+                'speaker': f'SPEAKER_{speaker:02d}',
+                'confidence': 1.0
+            }
+            result['segments'].append(segment)
             
-            # 解析结果（需要根据实际输出格式调整）
-            if hasattr(result, 'segments'):
-                segments = result.segments
-                for i, segment in enumerate(segments):
-                    formatted_segment = {
-                        'id': i,
-                        'start': getattr(segment, 'start', 0),
-                        'end': getattr(segment, 'end', 0),
-                        'text': getattr(segment, 'text', ''),
-                        'speaker': getattr(segment, 'speaker', f'SPEAKER_{i:02d}'),
-                        'confidence': getattr(segment, 'confidence', 1.0)
-                    }
-                    formatted_result['segments'].append(formatted_segment)
-                    
-                    # 收集说话人信息
-                    speaker = formatted_segment['speaker']
-                    if speaker not in formatted_result['speakers']:
-                        formatted_result['speakers'][speaker] = speaker
-            
-            # 更新摘要信息
-            if formatted_result['segments']:
-                formatted_result['text'] = ' '.join(seg['text'] for seg in formatted_result['segments'])
-                formatted_result['summary']['total_duration'] = max(
-                    seg['end'] for seg in formatted_result['segments']
-                )
-                formatted_result['summary']['total_segments'] = len(formatted_result['segments'])
-                formatted_result['summary']['total_speakers'] = len(formatted_result['speakers'])
-            
-            return formatted_result
-            
-        except Exception as e:
-            logger.error(f"格式化 whisper-diarization 结果失败: {e}")
-            raise
+            # 收集说话人信息
+            speaker_key = f'SPEAKER_{speaker:02d}'
+            if speaker_key not in result['speakers']:
+                result['speakers'][speaker_key] = speaker_key
+        
+        # 更新摘要信息
+        if result['segments']:
+            result['text'] = ' '.join(seg['text'] for seg in result['segments'])
+            result['summary']['total_duration'] = max(
+                seg['end'] for seg in result['segments']
+            )
+            result['summary']['total_segments'] = len(result['segments'])
+            result['summary']['total_speakers'] = len(result['speakers'])
+        
+        return result
     
     def _transcribe_with_whisper(self, audio_path: str, timeout: int = None) -> Dict:
         """使用基础 Whisper 进行转写"""
