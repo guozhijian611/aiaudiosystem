@@ -115,6 +115,9 @@ class WhisperDiarizationTranscriber:
     def _init_whisper_diarization_module(self):
         """初始化 whisper-diarization 模块"""
         try:
+            # 在导入前修复 Windows 兼容性问题
+            self._apply_windows_compatibility_fix()
+            
             # 添加 whisper-diarization 路径到 Python 路径
             sys.path.insert(0, self.whisper_diarization_path)
             
@@ -134,13 +137,32 @@ class WhisperDiarizationTranscriber:
             logger.info("whisper-diarization 模块初始化成功")
             
         except ImportError as e:
-            logger.warning(f"无法导入 whisper-diarization 模块: {e}")
-            logger.info("回退到基础 Whisper 模式")
-            self._init_fallback_model()
+            logger.error(f"无法导入 whisper-diarization 模块: {e}")
+            raise Exception("whisper-diarization 模块导入失败，无法使用高级功能")
         except Exception as e:
             logger.error(f"whisper-diarization 模块初始化失败: {e}")
-            logger.info("回退到基础 Whisper 模式")
-            self._init_fallback_model()
+            raise Exception(f"whisper-diarization 模块初始化失败: {e}")
+    
+    def _apply_windows_compatibility_fix(self):
+        """应用 Windows 兼容性修复"""
+        try:
+            # 修复 signal.SIGKILL 问题
+            import signal
+            if not hasattr(signal, 'SIGKILL'):
+                signal.SIGKILL = 9  # Windows 使用 9 作为终止信号
+                logger.info("已修复 Windows signal.SIGKILL 兼容性问题")
+            
+            # 修复其他可能的 Windows 兼容性问题
+            if platform.system() == 'Windows':
+                # 确保环境变量正确设置
+                os.environ['PYTHONPATH'] = os.pathsep.join([
+                    os.environ.get('PYTHONPATH', ''),
+                    self.whisper_diarization_path
+                ]).strip(os.pathsep)
+                
+                logger.info("已应用 Windows 兼容性修复")
+        except Exception as e:
+            logger.warning(f"Windows 兼容性修复失败: {e}")
     
     def transcribe_audio(self, audio_path: str, timeout: int = None) -> Dict:
         """
@@ -169,11 +191,11 @@ class WhisperDiarizationTranscriber:
             
             logger.info(f"音频文件大小: {self._format_size(file_size)}")
             
-            # 执行转写
+            # 执行转写 - 必须使用高级功能
             if hasattr(self, 'diarization_pipeline') and self.config.ENABLE_DIARIZATION:
                 result = self._transcribe_with_diarization_module(audio_path, timeout)
             else:
-                result = self._transcribe_with_whisper(audio_path, timeout)
+                raise Exception("高级功能不可用，无法进行转写")
             
             # 计算处理时间
             process_time = time.time() - start_time
@@ -203,9 +225,7 @@ class WhisperDiarizationTranscriber:
         try:
             # 检查 HF_TOKEN
             if self.config.ENABLE_DIARIZATION and not self.config.HF_TOKEN:
-                logger.warning("未配置 HF_TOKEN，说话人分离功能将被禁用")
-                # 使用基础 Whisper 模式
-                return self._transcribe_with_whisper(audio_path)
+                raise Exception("未配置 HF_TOKEN，说话人分离功能无法使用")
             
             logger.info("使用 whisper-diarization 模块进行转写...")
             
@@ -230,8 +250,7 @@ class WhisperDiarizationTranscriber:
             
         except Exception as e:
             logger.error(f"whisper-diarization 模块转写失败: {e}")
-            logger.info("回退到基础 Whisper 模式")
-            return self._transcribe_with_whisper(audio_path)
+            raise Exception(f"高级功能转写失败: {e}")
     
     def _format_diarization_result(self, result) -> Dict:
         """格式化 whisper-diarization 结果"""
