@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  translate2_node:
+    build: .
+    container_name: translate2_node
+    restart: unless-stopped
+    environment:
+      # RabbitMQ配置
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USERNAME=admin
+      - RABBITMQ_PASSWORD=admin
+      - RABBITMQ_VIRTUAL_HOST=/
+      
+      # 队列名称
+      - QUEUE_NAME=transcribe_queue
+      
+      # 后端API配置
+      - API_BASE_URL=http://host.docker.internal:8787
+      - API_UPLOAD_ENDPOINT=/queue/upload
+      - API_CALLBACK_ENDPOINT=/queue/callback
+      
+      # 工作目录配置
+      - WORK_DIR=/app/work
+      - TEMP_DIR=/app/temp
+      - LOG_LEVEL=INFO
+      
+      # Whisper-Diarization配置
+      - WHISPER_MODEL=large-v3
+      - WHISPER_LANGUAGE=auto
+      - WHISPER_DEVICE=auto
+      - WHISPER_BATCH_SIZE=16
+      - WHISPER_COMPUTE_TYPE=auto
+      
+      # 说话人分离配置
+      - ENABLE_DIARIZATION=true
+      - DIARIZATION_MODEL=pyannote/speaker-diarization-3.1
+      - HF_TOKEN=${HF_TOKEN}
+      - MIN_SPEAKERS=1
+      - MAX_SPEAKERS=10
+      
+      # VAD配置
+      - ENABLE_VAD=true
+      - VAD_THRESHOLD=0.5
+      - VAD_MIN_SPEECH_DURATION=0.5
+      - VAD_MAX_SPEECH_DURATION=30.0
+      
+      # TitaNet配置
+      - ENABLE_TITANET=true
+      - TITANET_MODEL=titanet-l
+      
+      # 语言对齐配置
+      - ENABLE_ALIGNMENT=true
+      - ALIGNMENT_MODEL=WAV2VEC2_ASR_LARGE_LV60K_960H
+      
+      # 处理限制配置
+      - MAX_AUDIO_DURATION=3600
+      - PROCESSING_TIMEOUT=7200
+      - CHUNK_DURATION=600
+      
+      # 输出格式配置
+      - OUTPUT_FORMAT=json
+      - INCLUDE_TIMESTAMPS=true
+      - INCLUDE_CONFIDENCE=true
+      
+      # 模型缓存配置
+      - MODEL_CACHE_DIR=/app/models
+      - DISABLE_UPDATE=true
+      
+      # 队列配置
+      - QUEUE_TTL=3600000
+      - QUEUE_DURABLE=true
+      
+      # 其他配置
+      - MAX_WORKERS=1
+      - DOWNLOAD_TIMEOUT=300
+      
+      # Whisper-Diarization路径配置
+      - WHISPER_DIARIZATION_PATH=/app/whisper-diarization
+    
+    volumes:
+      - translate2_node_work:/app/work
+      - translate2_node_temp:/app/temp
+      - translate2_node_logs:/app/logs
+      - translate2_node_models:/app/models
+    
+    depends_on:
+      - rabbitmq
+    
+    networks:
+      - audio_network
+
+  # RabbitMQ 服务（可选，如果已有外部RabbitMQ可以移除）
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"  # 管理界面
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - audio_network
+
+volumes:
+  translate2_node_work:
+  translate2_node_temp:
+  translate2_node_logs:
+  translate2_node_models:
+  rabbitmq_data:
+
+networks:
+  audio_network:
+    driver: bridge 
