@@ -24,12 +24,16 @@ from config import Config
 whisper_diarization_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'whisper-diarization')
 if os.path.exists(whisper_diarization_path):
     sys.path.append(whisper_diarization_path)
+    logger.info(f"已添加 Whisper-Diarization 路径: {whisper_diarization_path}")
 
 try:
     from whisper_diarization import WhisperDiarization
-except ImportError:
-    logger.warning("Whisper-Diarization 模块未找到，将使用基础 Whisper 实现")
-    WhisperDiarization = None
+    WHISPER_DIARIZATION_AVAILABLE = True
+    logger.info("Whisper-Diarization 模块导入成功")
+except ImportError as e:
+    logger.warning(f"Whisper-Diarization 模块未找到: {e}")
+    logger.info("将使用基础 Whisper 实现")
+    WHISPER_DIARIZATION_AVAILABLE = False
 
 class WhisperDiarizationTranscriber:
     """Whisper-Diarization 转写器类"""
@@ -67,8 +71,9 @@ class WhisperDiarizationTranscriber:
     def _init_model(self):
         """初始化模型"""
         try:
-            if WhisperDiarization is not None:
+            if WHISPER_DIARIZATION_AVAILABLE and self.config.ENABLE_DIARIZATION:
                 # 使用 Whisper-Diarization
+                logger.info("正在初始化 Whisper-Diarization 模型...")
                 self.model = WhisperDiarization(
                     model_name=self.config.WHISPER_MODEL,
                     device=self.device,
@@ -89,10 +94,11 @@ class WhisperDiarizationTranscriber:
                 logger.info("Whisper-Diarization 模型加载成功")
             else:
                 # 回退到基础 Whisper 实现
+                logger.info("使用基础 Whisper 实现")
                 self._init_fallback_model()
                 
         except Exception as e:
-            logger.error(f"模型初始化失败: {e}")
+            logger.error(f"Whisper-Diarization 模型初始化失败: {e}")
             logger.info("尝试使用基础 Whisper 实现")
             self._init_fallback_model()
     
@@ -100,8 +106,12 @@ class WhisperDiarizationTranscriber:
         """初始化回退模型（基础 Whisper）"""
         try:
             import whisper
+            logger.info(f"正在加载基础 Whisper 模型: {self.config.WHISPER_MODEL}")
             self.model = whisper.load_model(self.config.WHISPER_MODEL, device=self.device)
             logger.info("基础 Whisper 模型加载成功")
+        except ImportError:
+            logger.error("whisper 模块未安装，请运行: pip install openai-whisper")
+            raise
         except Exception as e:
             logger.error(f"基础 Whisper 模型加载失败: {e}")
             raise
@@ -134,7 +144,7 @@ class WhisperDiarizationTranscriber:
             logger.info(f"音频文件大小: {self._format_size(file_size)}")
             
             # 执行转写
-            if WhisperDiarization is not None and self.model is not None:
+            if WHISPER_DIARIZATION_AVAILABLE and hasattr(self.model, 'transcribe') and self.config.ENABLE_DIARIZATION:
                 result = self._transcribe_with_diarization(audio_path)
             else:
                 result = self._transcribe_with_whisper(audio_path)
@@ -150,9 +160,10 @@ class WhisperDiarizationTranscriber:
                 'file_size': file_size,
                 'model': self.config.WHISPER_MODEL,
                 'device': self.device,
-                'diarization_enabled': self.config.ENABLE_DIARIZATION,
+                'diarization_enabled': self.config.ENABLE_DIARIZATION and WHISPER_DIARIZATION_AVAILABLE,
                 'vad_enabled': self.config.ENABLE_VAD,
-                'titanet_enabled': self.config.ENABLE_TITANET
+                'titanet_enabled': self.config.ENABLE_TITANET,
+                'whisper_diarization_available': WHISPER_DIARIZATION_AVAILABLE
             }
             
             return result
@@ -168,9 +179,11 @@ class WhisperDiarizationTranscriber:
             if self.config.ENABLE_DIARIZATION and not self.config.HF_TOKEN:
                 logger.warning("未配置 HF_TOKEN，说话人分离功能将被禁用")
                 # 临时禁用说话人分离
-                self.model.diarization = False
+                if hasattr(self.model, 'diarization'):
+                    self.model.diarization = False
             
             # 执行转写
+            logger.info("使用 Whisper-Diarization 进行转写...")
             result = self.model.transcribe(
                 audio_path,
                 language=self.config.WHISPER_LANGUAGE,
@@ -189,6 +202,7 @@ class WhisperDiarizationTranscriber:
         """使用基础 Whisper 进行转写"""
         try:
             # 执行转写
+            logger.info("使用基础 Whisper 进行转写...")
             result = self.model.transcribe(
                 audio_path,
                 language=self.config.WHISPER_LANGUAGE,

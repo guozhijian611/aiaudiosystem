@@ -8,6 +8,9 @@ loguru==0.7.2
 # 音频处理依赖
 librosa>=0.10.0
 
+# Whisper 基础模块
+openai-whisper>=20231117
+
 # Whisper-Diarization 特有依赖
 torch>=2.0.0
 torchaudio>=2.0.0
