@@ -82,11 +82,10 @@ class WhisperDiarizationTranscriber:
         """初始化模型"""
         try:
             if self.whisper_diarization_path and self.config.ENABLE_DIARIZATION:
-                # 使用 Whisper-Diarization 脚本
-                logger.info("Whisper-Diarization 脚本可用，将使用脚本模式")
-                self.use_script_mode = True
-                # 同时初始化基础 Whisper 模型作为备用
-                self._init_fallback_model()
+                # 尝试直接导入 whisper-diarization 模块
+                logger.info("尝试直接导入 whisper-diarization 模块")
+                self.use_script_mode = False
+                self._init_whisper_diarization_module()
             else:
                 # 回退到基础 Whisper 实现
                 logger.info("使用基础 Whisper 实现")
@@ -112,6 +111,36 @@ class WhisperDiarizationTranscriber:
         except Exception as e:
             logger.error(f"基础 Whisper 模型加载失败: {e}")
             raise
+    
+    def _init_whisper_diarization_module(self):
+        """初始化 whisper-diarization 模块"""
+        try:
+            # 添加 whisper-diarization 路径到 Python 路径
+            sys.path.insert(0, self.whisper_diarization_path)
+            
+            # 尝试导入 whisper-diarization 模块
+            from diarize import DiarizationPipeline
+            logger.info("成功导入 whisper-diarization 模块")
+            
+            # 初始化说话人分离管道
+            self.diarization_pipeline = DiarizationPipeline(
+                use_auth_token=self.config.HF_TOKEN,
+                device=self.device
+            )
+            
+            # 同时初始化基础 Whisper 模型
+            self._init_fallback_model()
+            
+            logger.info("whisper-diarization 模块初始化成功")
+            
+        except ImportError as e:
+            logger.warning(f"无法导入 whisper-diarization 模块: {e}")
+            logger.info("回退到基础 Whisper 模式")
+            self._init_fallback_model()
+        except Exception as e:
+            logger.error(f"whisper-diarization 模块初始化失败: {e}")
+            logger.info("回退到基础 Whisper 模式")
+            self._init_fallback_model()
     
     def transcribe_audio(self, audio_path: str, timeout: int = None) -> Dict:
         """
@@ -141,8 +170,8 @@ class WhisperDiarizationTranscriber:
             logger.info(f"音频文件大小: {self._format_size(file_size)}")
             
             # 执行转写
-            if self.use_script_mode and self.config.ENABLE_DIARIZATION:
-                result = self._transcribe_with_diarization_script(audio_path, timeout)
+            if hasattr(self, 'diarization_pipeline') and self.config.ENABLE_DIARIZATION:
+                result = self._transcribe_with_diarization_module(audio_path, timeout)
             else:
                 result = self._transcribe_with_whisper(audio_path, timeout)
             
@@ -157,10 +186,10 @@ class WhisperDiarizationTranscriber:
                 'file_size': file_size,
                 'model': self.config.WHISPER_MODEL,
                 'device': self.device,
-                'diarization_enabled': self.config.ENABLE_DIARIZATION and self.use_script_mode,
+                'diarization_enabled': hasattr(self, 'diarization_pipeline') and self.config.ENABLE_DIARIZATION,
                 'vad_enabled': self.config.ENABLE_VAD,
                 'titanet_enabled': self.config.ENABLE_TITANET,
-                'whisper_diarization_available': self.use_script_mode
+                'whisper_diarization_available': hasattr(self, 'diarization_pipeline')
             }
             
             return result
@@ -169,8 +198,8 @@ class WhisperDiarizationTranscriber:
             logger.error(f"音频转写失败: {e}")
             raise
     
-    def _transcribe_with_diarization_script(self, audio_path: str, timeout: int = None) -> Dict:
-        """使用 Whisper-Diarization 脚本进行转写"""
+    def _transcribe_with_diarization_module(self, audio_path: str, timeout: int = None) -> Dict:
+        """使用 whisper-diarization 模块进行转写"""
         try:
             # 检查 HF_TOKEN
             if self.config.ENABLE_DIARIZATION and not self.config.HF_TOKEN:
@@ -178,285 +207,82 @@ class WhisperDiarizationTranscriber:
                 # 使用基础 Whisper 模式
                 return self._transcribe_with_whisper(audio_path)
             
-            # 检查 NeMo 版本兼容性
-            try:
-                import nemo
-                logger.info(f"NeMo 版本: {nemo.__version__}")
-                
-                # 检查是否有 NeuralDiarizer
-                try:
-                    from nemo.collections.asr.models.msdd_models import NeuralDiarizer
-                    logger.info("NeuralDiarizer 可用")
-                except ImportError:
-                    logger.warning("NeuralDiarizer 不可用，尝试使用 ClusteringDiarizer")
-                    try:
-                        from nemo.collections.asr.models import ClusteringDiarizer
-                        logger.info("ClusteringDiarizer 可用")
-                    except ImportError:
-                        logger.warning("未找到可用的说话人分离模块，将使用基础 Whisper")
-                        return self._transcribe_with_whisper(audio_path)
-                        
-            except ImportError:
-                logger.warning("NeMo 不可用，将使用基础 Whisper")
-                return self._transcribe_with_whisper(audio_path)
+            logger.info("使用 whisper-diarization 模块进行转写...")
             
-            # 应用 Windows 兼容性修复
-            if platform.system() == 'Windows':
-                self._apply_windows_compatibility_fix()
+            # 处理语言参数
+            language = self.config.WHISPER_LANGUAGE
+            if language and language.lower() in ['auto', 'none', 'null', '']:
+                language = None  # 让 Whisper 自动检测语言
             
-            # 构建命令
-            diarize_script = os.path.join(self.whisper_diarization_path, 'diarize.py')
-            cmd = [
-                sys.executable,
-                diarize_script,
-                '-a', audio_path,
-                '--whisper-model', self.config.WHISPER_MODEL,
-                '--device', self.device,
-                '--batch-size', str(self.config.WHISPER_BATCH_SIZE)
-            ]
+            # 调用 whisper-diarization 模块
+            result = self.diarization_pipeline(
+                audio_path,
+                whisper_model=self.config.WHISPER_MODEL,
+                language=language,
+                batch_size=self.config.WHISPER_BATCH_SIZE,
+                vad=self.config.ENABLE_VAD,
+                min_speakers=self.config.MIN_SPEAKERS,
+                max_speakers=self.config.MAX_SPEAKERS
+            )
             
-            # 添加语言参数（只有当明确指定语言时才添加，且不是 auto）
-            if (self.config.WHISPER_LANGUAGE and 
-                self.config.WHISPER_LANGUAGE.lower() not in ['auto', 'none', 'null', '']):
-                cmd.extend(['--language', self.config.WHISPER_LANGUAGE])
-            
-            # 添加其他参数
-            if not self.config.ENABLE_VAD:
-                cmd.append('--no-stem')
-            
-            logger.info(f"执行命令: {' '.join(cmd)}")
-            
-            # 执行脚本，使用 Windows 兼容的方式
-            try:
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    cwd=self.whisper_diarization_path,
-                    timeout=timeout or 3600  # 默认1小时超时
-                )
-                
-                if result.returncode != 0:
-                    logger.error(f"Whisper-Diarization 脚本执行失败: {result.stderr}")
-                    # 如果脚本失败，回退到基础 Whisper
-                    logger.info("回退到基础 Whisper 模式")
-                    return self._transcribe_with_whisper(audio_path)
-                
-                # 解析输出
-                return self._parse_diarization_output(result.stdout, audio_path)
-                
-            except subprocess.TimeoutExpired:
-                logger.error("Whisper-Diarization 脚本执行超时")
-                logger.info("回退到基础 Whisper 模式")
-                return self._transcribe_with_whisper(audio_path)
-            except Exception as e:
-                logger.error(f"Whisper-Diarization 脚本执行异常: {e}")
-                logger.info("回退到基础 Whisper 模式")
-                return self._transcribe_with_whisper(audio_path)
+            # 格式化结果
+            return self._format_diarization_result(result)
             
         except Exception as e:
-            logger.error(f"Whisper-Diarization 脚本转写失败: {e}")
+            logger.error(f"whisper-diarization 模块转写失败: {e}")
             logger.info("回退到基础 Whisper 模式")
             return self._transcribe_with_whisper(audio_path)
     
-    def _apply_windows_compatibility_fix(self):
-        """应用 Windows 兼容性修复"""
+    def _format_diarization_result(self, result) -> Dict:
+        """格式化 whisper-diarization 结果"""
         try:
-            # 修复 signal.SIGKILL 问题
-            import signal
-            if not hasattr(signal, 'SIGKILL'):
-                signal.SIGKILL = 9  # Windows 使用 9 作为终止信号
-                logger.info("已修复 Windows signal.SIGKILL 兼容性问题")
-        except Exception as e:
-            logger.warning(f"Windows 兼容性修复失败: {e}")
-    
-    def _parse_diarization_output(self, output: str, audio_path: str) -> Dict:
-        """解析 Whisper-Diarization 脚本输出"""
-        try:
-            # 查找生成的 SRT 文件
-            base_name = os.path.splitext(os.path.basename(audio_path))[0]
-            srt_file = os.path.join(self.whisper_diarization_path, f"{base_name}.srt")
+            # 根据 whisper-diarization 的输出格式进行解析
+            # 这里需要根据实际的输出格式进行调整
             
-            if not os.path.exists(srt_file):
-                logger.warning(f"未找到 SRT 文件: {srt_file}")
-                # 尝试从输出中解析
-                return self._parse_output_text(output)
-            
-            # 解析 SRT 文件
-            return self._parse_srt_file(srt_file)
-            
-        except Exception as e:
-            logger.error(f"解析 Whisper-Diarization 输出失败: {e}")
-            raise
-    
-    def _parse_srt_file(self, srt_file: str) -> Dict:
-        """解析 SRT 文件"""
-        try:
-            segments = []
-            current_segment = {}
-            speaker_mapping = {}
-            current_speaker_id = 0
-            
-            with open(srt_file, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-            
-            i = 0
-            while i < len(lines):
-                line = lines[i].strip()
-                
-                if line.isdigit():  # 段落编号
-                    if current_segment:
-                        segments.append(current_segment)
-                    
-                    current_segment = {'id': int(line)}
-                    i += 1
-                    
-                    # 时间戳行
-                    if i < len(lines):
-                        time_line = lines[i].strip()
-                        start_time, end_time = self._parse_timestamp(time_line)
-                        current_segment['start'] = start_time
-                        current_segment['end'] = end_time
-                        i += 1
-                    
-                    # 文本行
-                    text_lines = []
-                    while i < len(lines) and lines[i].strip():
-                        text_lines.append(lines[i].strip())
-                        i += 1
-                    
-                    if text_lines:
-                        text = ' '.join(text_lines)
-                        # 提取说话人信息
-                        speaker, clean_text = self._extract_speaker(text)
-                        
-                        # 说话人编号归一化
-                        if speaker not in speaker_mapping:
-                            speaker_mapping[speaker] = f"SPEAKER_{current_speaker_id:02d}"
-                            current_speaker_id += 1
-                        
-                        current_segment['text'] = clean_text
-                        current_segment['speaker'] = speaker_mapping[speaker]
-                        current_segment['confidence'] = 1.0  # SRT 没有置信度信息
-                
-                i += 1
-            
-            # 添加最后一个段落
-            if current_segment:
-                segments.append(current_segment)
-            
-            # 构建结果
-            result = {
-                'text': ' '.join(seg['text'] for seg in segments),
-                'language': 'unknown',  # SRT 没有语言信息
-                'segments': segments,
-                'speakers': speaker_mapping,
-                'summary': {
-                    'total_duration': max(seg['end'] for seg in segments) if segments else 0,
-                    'total_segments': len(segments),
-                    'total_speakers': len(speaker_mapping)
-                }
-            }
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"解析 SRT 文件失败: {e}")
-            raise
-    
-    def _parse_timestamp(self, time_line: str) -> Tuple[float, float]:
-        """解析时间戳"""
-        try:
-            # 格式: 00:00:00,000 --> 00:00:00,000
-            parts = time_line.split(' --> ')
-            start_str = parts[0].replace(',', '.')
-            end_str = parts[1].replace(',', '.')
-            
-            start_time = self._time_to_seconds(start_str)
-            end_time = self._time_to_seconds(end_str)
-            
-            return start_time, end_time
-        except Exception as e:
-            logger.error(f"解析时间戳失败: {e}")
-            return 0.0, 0.0
-    
-    def _time_to_seconds(self, time_str: str) -> float:
-        """将时间字符串转换为秒数"""
-        try:
-            # 格式: HH:MM:SS.mmm
-            parts = time_str.split(':')
-            hours = int(parts[0])
-            minutes = int(parts[1])
-            seconds = float(parts[2])
-            
-            return hours * 3600 + minutes * 60 + seconds
-        except Exception as e:
-            logger.error(f"时间转换失败: {e}")
-            return 0.0
-    
-    def _extract_speaker(self, text: str) -> Tuple[str, str]:
-        """从文本中提取说话人信息"""
-        try:
-            # 常见的说话人格式: [Speaker 1], (Speaker 1), Speaker 1:, 等
-            import re
-            
-            # 匹配各种说话人格式
-            patterns = [
-                r'\[([^\]]+)\]:?\s*(.*)',  # [Speaker 1]: text
-                r'\(([^)]+)\):?\s*(.*)',   # (Speaker 1): text
-                r'^([^:]+):\s*(.*)',       # Speaker 1: text
-                r'^([A-Za-z\s]+\d+)\s*(.*)'  # Speaker 1 text
-            ]
-            
-            for pattern in patterns:
-                match = re.match(pattern, text.strip())
-                if match:
-                    speaker = match.group(1).strip()
-                    clean_text = match.group(2).strip()
-                    return speaker, clean_text
-            
-            # 如果没有匹配到，返回默认说话人
-            return 'SPEAKER_UNKNOWN', text
-            
-        except Exception as e:
-            logger.error(f"提取说话人信息失败: {e}")
-            return 'SPEAKER_UNKNOWN', text
-    
-    def _parse_output_text(self, output: str) -> Dict:
-        """从脚本输出中解析文本"""
-        try:
-            # 简单的文本解析，作为兜底方案
-            lines = output.split('\n')
-            text_lines = []
-            
-            for line in lines:
-                line = line.strip()
-                if line and not line.startswith('[') and not line.startswith('('):
-                    text_lines.append(line)
-            
-            text = ' '.join(text_lines)
-            
-            return {
-                'text': text,
+            formatted_result = {
+                'text': '',
                 'language': 'unknown',
-                'segments': [{
-                    'id': 0,
-                    'start': 0.0,
-                    'end': 0.0,
-                    'text': text,
-                    'speaker': 'SPEAKER_00',
-                    'confidence': 1.0
-                }],
-                'speakers': {'SPEAKER_00': 'SPEAKER_00'},
+                'segments': [],
+                'speakers': {},
                 'summary': {
-                    'total_duration': 0.0,
-                    'total_segments': 1,
-                    'total_speakers': 1
+                    'total_duration': 0,
+                    'total_segments': 0,
+                    'total_speakers': 0
                 }
             }
             
+            # 解析结果（需要根据实际输出格式调整）
+            if hasattr(result, 'segments'):
+                segments = result.segments
+                for i, segment in enumerate(segments):
+                    formatted_segment = {
+                        'id': i,
+                        'start': getattr(segment, 'start', 0),
+                        'end': getattr(segment, 'end', 0),
+                        'text': getattr(segment, 'text', ''),
+                        'speaker': getattr(segment, 'speaker', f'SPEAKER_{i:02d}'),
+                        'confidence': getattr(segment, 'confidence', 1.0)
+                    }
+                    formatted_result['segments'].append(formatted_segment)
+                    
+                    # 收集说话人信息
+                    speaker = formatted_segment['speaker']
+                    if speaker not in formatted_result['speakers']:
+                        formatted_result['speakers'][speaker] = speaker
+            
+            # 更新摘要信息
+            if formatted_result['segments']:
+                formatted_result['text'] = ' '.join(seg['text'] for seg in formatted_result['segments'])
+                formatted_result['summary']['total_duration'] = max(
+                    seg['end'] for seg in formatted_result['segments']
+                )
+                formatted_result['summary']['total_segments'] = len(formatted_result['segments'])
+                formatted_result['summary']['total_speakers'] = len(formatted_result['speakers'])
+            
+            return formatted_result
+            
         except Exception as e:
-            logger.error(f"解析输出文本失败: {e}")
+            logger.error(f"格式化 whisper-diarization 结果失败: {e}")
             raise
     
     def _transcribe_with_whisper(self, audio_path: str, timeout: int = None) -> Dict:
