@@ -1,0 +1,31 @@
+# 基础依赖
+pika==1.3.2
+requests==2.32.4
+python-dotenv==1.0.0
+psutil==5.9.8
+loguru==0.7.2
+
+# 音频处理依赖
+librosa>=0.10.0
+
+# Whisper-Diarization 特有依赖
+torch>=2.0.0
+torchaudio>=2.0.0
+transformers>=4.48.0
+datasets>=2.14.0
+accelerate>=0.20.0
+
+# 说话人分离相关
+pyannote-audio>=3.3.2
+pyannote-core>=5.0.0
+torch-audiomentations>=0.11.0
+
+# 音频处理
+soundfile>=0.12.0
+resampy>=0.4.0
+
+# 其他工具
+numpy>=2.0.2
+pandas>=2.2.3
+scipy>=1.10.0
+scikit-learn>=1.3.0 
