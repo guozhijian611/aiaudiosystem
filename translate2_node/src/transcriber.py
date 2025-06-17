@@ -100,7 +100,7 @@ class WhisperDiarizationTranscriber:
             self._init_fallback_model()
     
     def _init_fallback_model(self):
-        """初始化回退模型（基础 Whisper）"""
+        """初始化基础 Whisper 模型"""
         try:
             import whisper
             logger.info(f"正在加载基础 Whisper 模型: {self.config.WHISPER_MODEL}")
@@ -200,6 +200,10 @@ class WhisperDiarizationTranscriber:
                 logger.warning("NeMo 不可用，将使用基础 Whisper")
                 return self._transcribe_with_whisper(audio_path)
             
+            # 应用 Windows 兼容性修复
+            if platform.system() == 'Windows':
+                self._apply_windows_compatibility_fix()
+            
             # 构建命令
             diarize_script = os.path.join(self.whisper_diarization_path, 'diarize.py')
             cmd = [
@@ -211,7 +215,7 @@ class WhisperDiarizationTranscriber:
                 '--batch-size', str(self.config.WHISPER_BATCH_SIZE)
             ]
             
-            # 添加语言参数（只有当明确指定语言时才添加）
+            # 添加语言参数（只有当明确指定语言时才添加，且不是 auto）
             if (self.config.WHISPER_LANGUAGE and 
                 self.config.WHISPER_LANGUAGE.lower() not in ['auto', 'none', 'null', '']):
                 cmd.extend(['--language', self.config.WHISPER_LANGUAGE])
@@ -222,32 +226,49 @@ class WhisperDiarizationTranscriber:
             
             logger.info(f"执行命令: {' '.join(cmd)}")
             
-            # 执行脚本
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=self.whisper_diarization_path,
-                timeout=timeout or 3600  # 默认1小时超时
-            )
-            
-            if result.returncode != 0:
-                logger.error(f"Whisper-Diarization 脚本执行失败: {result.stderr}")
-                # 如果脚本失败，回退到基础 Whisper
+            # 执行脚本，使用 Windows 兼容的方式
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    cwd=self.whisper_diarization_path,
+                    timeout=timeout or 3600  # 默认1小时超时
+                )
+                
+                if result.returncode != 0:
+                    logger.error(f"Whisper-Diarization 脚本执行失败: {result.stderr}")
+                    # 如果脚本失败，回退到基础 Whisper
+                    logger.info("回退到基础 Whisper 模式")
+                    return self._transcribe_with_whisper(audio_path)
+                
+                # 解析输出
+                return self._parse_diarization_output(result.stdout, audio_path)
+                
+            except subprocess.TimeoutExpired:
+                logger.error("Whisper-Diarization 脚本执行超时")
+                logger.info("回退到基础 Whisper 模式")
+                return self._transcribe_with_whisper(audio_path)
+            except Exception as e:
+                logger.error(f"Whisper-Diarization 脚本执行异常: {e}")
                 logger.info("回退到基础 Whisper 模式")
                 return self._transcribe_with_whisper(audio_path)
             
-            # 解析输出
-            return self._parse_diarization_output(result.stdout, audio_path)
-            
-        except subprocess.TimeoutExpired:
-            logger.error("Whisper-Diarization 脚本执行超时")
-            logger.info("回退到基础 Whisper 模式")
-            return self._transcribe_with_whisper(audio_path)
         except Exception as e:
             logger.error(f"Whisper-Diarization 脚本转写失败: {e}")
             logger.info("回退到基础 Whisper 模式")
             return self._transcribe_with_whisper(audio_path)
+    
+    def _apply_windows_compatibility_fix(self):
+        """应用 Windows 兼容性修复"""
+        try:
+            # 修复 signal.SIGKILL 问题
+            import signal
+            if not hasattr(signal, 'SIGKILL'):
+                signal.SIGKILL = 9  # Windows 使用 9 作为终止信号
+                logger.info("已修复 Windows signal.SIGKILL 兼容性问题")
+        except Exception as e:
+            logger.warning(f"Windows 兼容性修复失败: {e}")
     
     def _parse_diarization_output(self, output: str, audio_path: str) -> Dict:
         """解析 Whisper-Diarization 脚本输出"""
@@ -443,9 +464,15 @@ class WhisperDiarizationTranscriber:
         try:
             # 执行转写
             logger.info("使用基础 Whisper 进行转写...")
+            
+            # 处理语言参数
+            language = self.config.WHISPER_LANGUAGE
+            if language and language.lower() in ['auto', 'none', 'null', '']:
+                language = None  # 让 Whisper 自动检测语言
+            
             result = self.model.transcribe(
                 audio_path,
-                language=self.config.WHISPER_LANGUAGE,
+                language=language,
                 word_timestamps=self.config.INCLUDE_TIMESTAMPS,
                 verbose=True
             )
