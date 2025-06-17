@@ -14,10 +14,11 @@ dependencies:
   - pytorch-cuda=11.8  
   - pip  
   - pip:  
-    # 核心依赖  
+    # 使用可用的ctranslate2版本  
     - faster-whisper>=1.1.0  
-    - ctranslate2==4.4.0  
+    - ctranslate2==4.6.0  # 更新到可用版本  
     - sentencepiece==0.1.99  
     - omegaconf  
     - wget  
     - nltk  
+    # 暂时跳过Git依赖的包
