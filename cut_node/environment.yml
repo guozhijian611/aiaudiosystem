@@ -1,0 +1,13 @@
+name: cut_node
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - ffmpeg
+  - pip
+  - pip:
+    - pika==1.3.2
+    - requests==2.31.0
+    - python-dotenv==1.0.0
+    - ffmpeg-python==0.2.0 

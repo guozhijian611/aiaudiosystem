@@ -18,6 +18,8 @@ class TaskInfoController
         $page = $request->post('page', 1); // 页码，默认第1页
         $limit = $request->post('limit', 10); // 每页数量，默认10条
         $search = $request->post('search', '');
+        $search_type = $request->post('is_quick', '0');//有效文件搜索
+        $step = $request->post('step', '');//步骤搜索
         $sort = $request->post('sort', 'id');
         $order = $request->post('order', 'desc');
 
@@ -32,6 +34,14 @@ class TaskInfoController
             // 添加搜索功能
             if (!empty($search)) {
                 $query->where('filename', 'like', '%' . $search . '%');
+            }
+            //有效文件搜索
+            if ($search_type == '1') {
+                $query->where('effective_voice', '>', 0);
+            }
+            //步骤搜索
+            if (!empty($step)) {
+                $query->where('step', $step);
             }
             
             // 添加排序功能
