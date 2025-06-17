@@ -13,6 +13,7 @@ import time
 import torch
 import numpy as np
 import subprocess
+import platform
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from logger import logger
@@ -30,6 +31,7 @@ class WhisperDiarizationTranscriber:
         self.model = None
         self.device = None
         self.whisper_diarization_path = None
+        self.use_script_mode = False
         self._init_device()
         self._init_whisper_diarization()
         self._init_model()
@@ -40,6 +42,7 @@ class WhisperDiarizationTranscriber:
         logger.info(f"说话人分离: {self.config.ENABLE_DIARIZATION}")
         logger.info(f"VAD启用: {self.config.ENABLE_VAD}")
         logger.info(f"TitaNet启用: {self.config.ENABLE_TITANET}")
+        logger.info(f"脚本模式: {self.use_script_mode}")
     
     def _init_device(self):
         """初始化设备"""
@@ -81,15 +84,19 @@ class WhisperDiarizationTranscriber:
             if self.whisper_diarization_path and self.config.ENABLE_DIARIZATION:
                 # 使用 Whisper-Diarization 脚本
                 logger.info("Whisper-Diarization 脚本可用，将使用脚本模式")
-                self.model = "script_mode"
+                self.use_script_mode = True
+                # 同时初始化基础 Whisper 模型作为备用
+                self._init_fallback_model()
             else:
                 # 回退到基础 Whisper 实现
                 logger.info("使用基础 Whisper 实现")
+                self.use_script_mode = False
                 self._init_fallback_model()
                 
         except Exception as e:
             logger.error(f"模型初始化失败: {e}")
             logger.info("尝试使用基础 Whisper 实现")
+            self.use_script_mode = False
             self._init_fallback_model()
     
     def _init_fallback_model(self):
@@ -134,7 +141,7 @@ class WhisperDiarizationTranscriber:
             logger.info(f"音频文件大小: {self._format_size(file_size)}")
             
             # 执行转写
-            if self.model == "script_mode" and self.config.ENABLE_DIARIZATION:
+            if self.use_script_mode and self.config.ENABLE_DIARIZATION:
                 result = self._transcribe_with_diarization_script(audio_path, timeout)
             else:
                 result = self._transcribe_with_whisper(audio_path, timeout)
@@ -150,10 +157,10 @@ class WhisperDiarizationTranscriber:
                 'file_size': file_size,
                 'model': self.config.WHISPER_MODEL,
                 'device': self.device,
-                'diarization_enabled': self.config.ENABLE_DIARIZATION and self.model == "script_mode",
+                'diarization_enabled': self.config.ENABLE_DIARIZATION and self.use_script_mode,
                 'vad_enabled': self.config.ENABLE_VAD,
                 'titanet_enabled': self.config.ENABLE_TITANET,
-                'whisper_diarization_available': self.model == "script_mode"
+                'whisper_diarization_available': self.use_script_mode
             }
             
             return result
