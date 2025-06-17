@@ -121,8 +121,8 @@ class WhisperDiarizationTranscriber:
             # 添加 whisper-diarization 路径到 Python 路径
             sys.path.insert(0, self.whisper_diarization_path)
             
-            # 尝试导入 whisper-diarization 模块
-            from diarize import DiarizationPipeline
+            # 尝试导入自定义的 whisper-diarization 模块
+            from diarization_module import DiarizationPipeline
             logger.info("成功导入 whisper-diarization 模块")
             
             # 初始化说话人分离管道
