@@ -33,21 +33,67 @@ class VADAnalyzer:
         try:
             logger.info("正在初始化FunASR VAD模型...")
             
-            # 初始化VAD模型（单独使用VAD功能）
-            # 对于单独的VAD任务，直接使用fsmn-vad模型
-            self.vad_model = AutoModel(
-                model=self.config.VAD_MODEL,  # 使用配置中的VAD模型 (默认: fsmn-vad)
-                model_revision=self.config.VAD_MODEL_REVISION,  # 使用配置中的模型版本
-                cache_dir=self.config.MODEL_CACHE_DIR,  # 使用本地缓存目录
-                disable_update=self.config.DISABLE_UPDATE,  # 禁用自动更新
-                # disable_update=True,  # 禁用自动更新
-            )
+            # 检查是否存在本地模型
+            local_model_path = None
+            possible_local_paths = [
+                os.path.join(self.config.MODEL_CACHE_DIR, 'speech_fsmn_vad_zh-cn-16k-common-pytorch'),
+                os.path.join(self.config.MODEL_CACHE_DIR, 'iic', 'speech_fsmn_vad_zh-cn-16k-common-pytorch'),
+                './models/speech_fsmn_vad_zh-cn-16k-common-pytorch',
+                './models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch',
+                # 兼容其他可能的本地路径
+                '/root/.cache/modelscope/hub/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch',
+                '/home/.cache/modelscope/hub/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch',
+            ]
             
-            logger.info(f"VAD模型初始化成功 - 模型: {self.config.VAD_MODEL} (版本: {self.config.VAD_MODEL_REVISION})")
+            # 查找本地模型
+            for path in possible_local_paths:
+                if os.path.exists(path) and os.path.isdir(path):
+                    # 检查是否包含模型文件
+                    model_files = [f for f in os.listdir(path) if f.endswith(('.bin', '.pt', '.pth', '.onnx'))]
+                    config_files = [f for f in os.listdir(path) if f in ['config.yaml', 'config.json', 'configuration.json']]
+                    
+                    if model_files and config_files:
+                        local_model_path = path
+                        logger.info(f"发现本地VAD模型: {local_model_path}")
+                        break
+            
+            # 根据是否找到本地模型来配置模型参数
+            if local_model_path and (self.config.OFFLINE_MODE or self.config.DISABLE_UPDATE):
+                # 使用本地模型
+                logger.info(f"使用本地VAD模型: {local_model_path}")
+                self.vad_model = AutoModel(
+                    model=local_model_path,
+                    disable_update=True,
+                    trust_remote_code=True
+                )
+            else:
+                # 使用远程模型（在线模式）
+                logger.info(f"使用远程VAD模型: {self.config.VAD_MODEL}")
+                self.vad_model = AutoModel(
+                    model=self.config.VAD_MODEL,
+                    model_revision=self.config.VAD_MODEL_REVISION,
+                    cache_dir=self.config.MODEL_CACHE_DIR,
+                    disable_update=self.config.DISABLE_UPDATE,
+                    trust_remote_code=True
+                )
+            
+            logger.info(f"VAD模型初始化成功 - 模型: {self.config.VAD_MODEL}")
             
         except Exception as e:
             logger.error(f"VAD模型初始化失败: {e}")
-            raise
+            # 尝试使用备用方案
+            logger.info("尝试使用备用VAD配置...")
+            try:
+                # 尝试使用流式VAD模型作为备用
+                self.vad_model = AutoModel(
+                    model="iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
+                    disable_update=True,
+                    trust_remote_code=True
+                )
+                logger.info("使用备用VAD模型成功")
+            except Exception as e2:
+                logger.error(f"备用VAD模型也失败: {e2}")
+                raise Exception(f"VAD模型初始化失败: 主模型错误={e}, 备用模型错误={e2}")
     
     def analyze_audio(self, audio_path: str) -> dict:
         """

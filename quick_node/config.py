@@ -28,9 +28,16 @@ class Config:
     API_CALLBACK_ENDPOINT = os.getenv('API_CALLBACK_ENDPOINT', '/queue/callback')
     API_CALLBACK_URL = f"{API_BASE_URL}{API_CALLBACK_ENDPOINT}"
     
+    # ==================== 模型配置 ====================
+    # 离线模式配置
+    OFFLINE_MODE = os.getenv('OFFLINE_MODE', 'false').lower() == 'true'
+    
     # ==================== VAD模型配置 ====================
     # 使用FunASR的VAD模型
-    VAD_MODEL = os.getenv('VAD_MODEL', 'fsmn-vad')
+    # 选项1: 使用完整的模型名称（推荐用于离线环境）
+    VAD_MODEL = os.getenv('VAD_MODEL', 'iic/speech_fsmn_vad_zh-cn-16k-common-pytorch')
+    # 选项2: 如果有本地模型路径，使用本地路径
+    # VAD_MODEL = os.getenv('VAD_MODEL', './models/speech_fsmn_vad_zh-cn-16k-common-pytorch')
     VAD_MODEL_REVISION = os.getenv('VAD_MODEL_REVISION', 'v2.0.4')
     
     # 模型参数
