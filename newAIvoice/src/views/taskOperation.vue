@@ -115,12 +115,13 @@
           <TableSearch :query="query" :options="searchOpt" :search="handleSearch" />
           <el-table :data="tableData" border style="width: 100%" @selection-change="handleSelectionChange">
             <el-table-column type="selection" align="center" width="55" />
-
+          
             <el-table-column label="文件名称" align="center" prop="filename" />
             <el-table-column label="大小" align="center" prop="size" />
             <el-table-column label="时长" align="center" prop="total_voice" show-overflow-tooltip />
             <el-table-column label="有效时长" align="center" prop="effective_voice" />
             <el-table-column label="语种" align="center" prop="language" />
+            <el-table-column label="上传时间" align="center" prop="create_time" />
             <el-table-column label="处理状态" align="center" prop="step" />
 
             <el-table-column label="操作" align="center" width="500">

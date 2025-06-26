@@ -13,7 +13,7 @@
         </div>
         <div class="text text1">{{ username }}</div>
       </div>
-      <div class="home-item">
+      <div class="home-item" @click="goToTaskManagement">
         <div class="title title2">
           <Finished
             style="width: 120px; height: 120px; margin-top: 10px; color: #fff"
@@ -157,6 +157,7 @@
 <script setup lang="ts" name="dashboard">
 // import countup from '@/components/countup.vue';
 import { ref, reactive, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import { use, registerMap } from "echarts/core";
 import { BarChart, LineChart, PieChart, MapChart } from "echarts/charts";
 import {obtainDetails} from "@/api/home";
@@ -190,6 +191,12 @@ const taskStatus = ref({
   processing: 0
 });
 
+const router = useRouter();
+
+// 跳转到后处理任务页面
+const goToTaskManagement = () => {
+  router.push({ name: 'task-management' });
+};
 
 onMounted(async () => {
   try {
@@ -246,6 +253,14 @@ onMounted(async () => {
     width: 26%;
     border-radius: 10px;
     overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    
+    &:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    }
+    
     .title {
       width: 100%;
       height: 30%;
