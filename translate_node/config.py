@@ -44,9 +44,19 @@ class Config:
     # 说话人分离配置
     ENABLE_DIARIZATION = os.getenv('ENABLE_DIARIZATION', 'true').lower() == 'true'
     DIARIZATION_MODEL = os.getenv('DIARIZATION_MODEL', 'pyannote/speaker-diarization-3.1')
+    # 支持的模型选项：
+    # - pyannote/speaker-diarization-3.1 (默认，稳定)
+    # - pyannote/speaker-diarization@2.1 (更新算法)
+    # - wespeaker (需要额外安装wespeaker)
+    # - speechbrain/spkrec-ecapa-voxceleb (需要speechbrain)
+    DIARIZATION_BACKEND = os.getenv('DIARIZATION_BACKEND', 'pyannote')  # pyannote, wespeaker, speechbrain
     HF_TOKEN = os.getenv('HF_TOKEN', '')  # Hugging Face Token，用于说话人分离
     MIN_SPEAKERS = int(os.getenv('MIN_SPEAKERS', 1))
     MAX_SPEAKERS = int(os.getenv('MAX_SPEAKERS', 10))
+    
+    # 高级说话人分离配置
+    SPEAKER_SIMILARITY_THRESHOLD = float(os.getenv('SPEAKER_SIMILARITY_THRESHOLD', 0.5))  # 说话人相似度阈值
+    MINIMUM_SEGMENT_DURATION = float(os.getenv('MINIMUM_SEGMENT_DURATION', 0.5))  # 最小段落时长(秒)
     
     # 语言对齐配置
     ENABLE_ALIGNMENT = os.getenv('ENABLE_ALIGNMENT', 'true').lower() == 'true'
