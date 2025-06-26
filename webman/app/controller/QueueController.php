@@ -7,6 +7,7 @@ use app\api\model\TaskInfo;
 use app\api\model\AiLog;
 use app\service\RabbitMQ;
 use app\constants\QueueConstants;
+use app\api\model\Task;
 
 /**
  * 队列控制器（统一入口 action 2=clear, 3=quick, 4=transcribe）
@@ -23,13 +24,19 @@ class QueueController
         $taskIds = (array)$request->input('task_id', []);
         $action = (int)$request->input('action');
         $results = [];
+        $affectedTaskIds = []; // 记录受影响的任务ID
+        
         if (!empty($taskinfoIds)) {
             foreach ($taskinfoIds as $tid) {
                 $taskInfo = TaskInfo::find($tid);
+                if ($taskInfo) {
+                    $affectedTaskIds[] = $taskInfo->tid;
+                }
                 $results[] = $this->processSingleTaskInfo($taskInfo, $action);
             }
         } elseif (!empty($taskIds)) {
             foreach ($taskIds as $taskId) {
+                $affectedTaskIds[] = $taskId;
                 $taskInfos = TaskInfo::where('tid', $taskId)->select();
                 foreach ($taskInfos as $taskInfo) {
                     $results[] = $this->processSingleTaskInfo($taskInfo, $action);
@@ -37,7 +44,8 @@ class QueueController
             }
         } else {
             return jsons(400, '请传入 taskinfo_id 或 task_id');
-                }
+        }
+        
         // 统计信息
         $total = count($results);
         $success = 0;
@@ -49,6 +57,13 @@ class QueueController
                 $failed++;
             }
         }
+        
+        // 🔥 更新受影响的任务状态
+        $affectedTaskIds = array_unique($affectedTaskIds);
+        foreach ($affectedTaskIds as $taskId) {
+            $this->updateTaskStatus($taskId);
+        }
+        
         $stat = [
             'total' => $total,
             'success' => $success,
@@ -178,7 +193,82 @@ class QueueController
         }
 
             $taskInfo->save();
+            
+            // 🔥 新增：更新任务表的状态
+            $this->updateTaskStatus($taskInfo->tid);
+            
         return jsons(200, '回调处理成功');
+    }
+
+    /**
+     * 根据任务子项的完成情况更新主任务状态
+     * 
+     * @param int $taskId 任务ID
+     * @return void
+     */
+    private function updateTaskStatus($taskId)
+    {
+        try {
+            // 获取任务的所有子项
+            $taskInfos = TaskInfo::where('tid', $taskId)->select();
+            if (!$taskInfos || $taskInfos->isEmpty()) {
+                return;
+            }
+
+            $totalFiles = $taskInfos->count();
+            $detectedFiles = 0; // 已检测文件数（fast_status=1）
+            $transcribedFiles = 0; // 已转写文件数（transcribe_status=1）
+            $processingFiles = 0; // 正在处理的文件数
+            
+            // 正在处理的步骤
+            $processingSteps = [
+                QueueConstants::STEP_EXTRACTING,
+                QueueConstants::STEP_CLEARING,
+                QueueConstants::STEP_FAST_RECOGNIZING,
+                QueueConstants::STEP_TRANSCRIBING
+            ];
+            
+            foreach ($taskInfos as $taskInfo) {
+                if ($taskInfo->fast_status == QueueConstants::STATUS_YES) {
+                    $detectedFiles++;
+                }
+                if ($taskInfo->transcribe_status == QueueConstants::STATUS_YES) {
+                    $transcribedFiles++;
+                }
+                if (in_array($taskInfo->step, $processingSteps)) {
+                    $processingFiles++;
+                }
+            }
+
+            // 根据完成情况确定任务状态
+            $newStatus = QueueConstants::TASK_STATUS_EMPTY; // 默认空任务状态
+            
+            if ($processingFiles > 0) {
+                // 有文件正在处理中
+                $newStatus = QueueConstants::TASK_STATUS_PROCESSING; // 处理中
+            } elseif ($transcribedFiles == $totalFiles) {
+                // 所有文件都已转写完成
+                $newStatus = QueueConstants::TASK_STATUS_CONVERTED; // 已转写
+            } elseif ($detectedFiles == $totalFiles) {
+                // 所有文件都已检测完成但未全部转写
+                $newStatus = QueueConstants::TASK_STATUS_CHECKED; // 已检测
+            } elseif ($detectedFiles > 0 || $transcribedFiles > 0) {
+                // 部分文件已处理但无正在处理的
+                $newStatus = QueueConstants::TASK_STATUS_CHECKED; // 已检测
+            }
+
+            // 更新任务状态
+            $task = Task::find($taskId);
+            if ($task && $task->status != $newStatus) {
+                $task->status = $newStatus;
+                $task->save();
+                
+                error_log("任务状态已更新 - 任务ID: {$taskId}, 新状态: {$newStatus}, 总文件: {$totalFiles}, 已检测: {$detectedFiles}, 已转写: {$transcribedFiles}, 处理中: {$processingFiles}");
+            }
+            
+        } catch (\Exception $e) {
+            error_log("更新任务状态失败 - 任务ID: {$taskId}, 错误: " . $e->getMessage());
+        }
     }
 
     /**
