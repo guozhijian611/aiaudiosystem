@@ -210,13 +210,145 @@
             </ul>
           </el-tab-pane>
         </el-tabs>
-        <!-- <div class="fileBox3"> -->
-          <el-button type="primary" class="clearbtn" @click="workflow1()">启动降噪</el-button>
-          <!-- <div class="item">处理进度：</div>
-          <div class="demo-progress">
-            <el-progress :percentage="percentage" :status="getStatus" />
-          </div> -->
-        <!-- </div> -->
+        
+        <!-- 降噪处理状态区域 -->
+        <div class="processing-container">
+          <!-- 已经降噪完成的状态 -->
+          <div v-if="isFileNoiseReduced(getFileInfo)" class="already-processed">
+            <div class="processing-card">
+              <div class="card-header success">
+                <el-icon class="header-icon"><CircleCheck /></el-icon>
+                <h3>降噪已完成</h3>
+              </div>
+              <div class="card-content">
+                <p class="success-message">该文件已经完成降噪处理，您可以在"文件降噪"标签页查看处理结果。</p>
+                <el-button type="success" @click="goToNoiseReductionTab">查看降噪结果</el-button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 未开始处理状态 -->
+          <div v-else-if="!isProcessing && !processComplete" class="start-processing">
+            <div class="processing-card">
+              <div class="card-header">
+                <el-icon class="header-icon"><MuteNotification /></el-icon>
+                <h3>音频降噪处理</h3>
+              </div>
+              <div class="card-content">
+                <p class="description">点击下方按钮开始对音频文件进行降噪处理，提升音频质量。</p>
+                <el-button 
+                  type="primary" 
+                  size="large" 
+                  class="start-btn" 
+                  @click="workflow1()"
+                  :loading="isStarting"
+                >
+                  <el-icon v-if="!isStarting"><MuteNotification /></el-icon>
+                  {{ isStarting ? '正在启动...' : '启动降噪处理' }}
+                </el-button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 处理中状态 -->
+          <div v-else-if="isProcessing" class="processing-status">
+            <div class="processing-card">
+              <div class="card-header processing">
+                <el-icon class="header-icon rotating"><Loading /></el-icon>
+                <h3>正在处理中...</h3>
+              </div>
+              <div class="card-content">
+                <div class="status-info">
+                  <div class="status-item">
+                    <span class="label">当前状态：</span>
+                    <el-tag type="warning" effect="plain">{{ currentStatus }}</el-tag>
+                  </div>
+                  <div class="status-item">
+                    <span class="label">处理文件：</span>
+                    <span class="filename">{{ getFileInfo?.filename }}</span>
+                  </div>
+                  <div class="status-item">
+                    <span class="label">预计时间：</span>
+                    <span class="time">{{ estimatedTime }}</span>
+                  </div>
+                </div>
+                
+                <!-- 进度条 -->
+                <div class="progress-section">
+                  <div class="progress-header">
+                    <span>处理进度</span>
+                    <span>{{ processingProgress }}%</span>
+                  </div>
+                  <el-progress 
+                    :percentage="processingProgress" 
+                    :status="processingProgress === 100 ? 'success' : ''"
+                    :stroke-width="8"
+                    :color="progressColors"
+                  />
+                </div>
+                
+                <!-- 处理步骤 -->
+                <div class="steps-section">
+                  <div class="step-item" :class="{ active: currentStep >= 1, completed: currentStep > 1 }">
+                    <div class="step-icon">
+                      <el-icon v-if="currentStep > 1"><Check /></el-icon>
+                      <el-icon v-else-if="currentStep === 1"><Loading /></el-icon>
+                      <span v-else>1</span>
+                    </div>
+                    <span class="step-text">排队等待</span>
+                  </div>
+                  <div class="step-line" :class="{ completed: currentStep > 1 }"></div>
+                  <div class="step-item" :class="{ active: currentStep >= 2, completed: currentStep > 2 }">
+                    <div class="step-icon">
+                      <el-icon v-if="currentStep > 2"><Check /></el-icon>
+                      <el-icon v-else-if="currentStep === 2"><Loading /></el-icon>
+                      <span v-else>2</span>
+                    </div>
+                    <span class="step-text">降噪处理</span>
+                  </div>
+                  <div class="step-line" :class="{ completed: currentStep > 2 }"></div>
+                  <div class="step-item" :class="{ active: currentStep >= 3, completed: currentStep > 3 }">
+                    <div class="step-icon">
+                      <el-icon v-if="currentStep > 3"><Check /></el-icon>
+                      <el-icon v-else-if="currentStep === 3"><Loading /></el-icon>
+                      <span v-else>3</span>
+                    </div>
+                    <span class="step-text">完成处理</span>
+                  </div>
+                </div>
+                
+                <div class="processing-tips">
+                  <el-alert
+                    title="处理提示"
+                    type="info"
+                    :closable="false"
+                    show-icon
+                  >
+                    <template #default>
+                      <p>• 请保持页面打开，处理过程中请勿关闭浏览器</p>
+                      <p>• 处理时间取决于文件大小和当前队列情况</p>
+                      <p>• 处理完成后将自动刷新页面显示结果</p>
+                    </template>
+                  </el-alert>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 处理完成状态 -->
+          <div v-else-if="processComplete" class="process-complete">
+            <div class="processing-card">
+              <div class="card-header success">
+                <el-icon class="header-icon"><CircleCheck /></el-icon>
+                <h3>处理完成</h3>
+              </div>
+              <div class="card-content">
+                <p class="success-message">音频降噪处理已完成，您现在可以在"文件降噪"标签页查看处理结果。</p>
+                <el-button type="success" @click="goToNoiseReductionTab">查看降噪结果</el-button>
+              </div>
+            </div>
+          </div>
+        </div>
       </el-tab-pane>
     </el-tabs>
     <el-button v-for="button in buttons" :key="button.text" :type="button.type" class="returnBtn" text
@@ -229,7 +361,7 @@
 <script lang="ts" setup>
 import { ref, computed, reactive, nextTick, onMounted, watch, onBeforeUnmount } from "vue";
 import type { TabsPaneContext } from "element-plus";
-import { ArrowDown, Loading, CircleClose } from "@element-plus/icons-vue";
+import { ArrowDown, Loading, CircleClose, MuteNotification, Check, CircleCheck } from "@element-plus/icons-vue";
 import TableSearch from "@/components/operation-search.vue";
 import { useRoute } from "vue-router";
 import { useRouter } from "vue-router";
@@ -256,20 +388,165 @@ const getStatus = computed(() => {
   if (percentage.value === 100) return "success";
   return ""; // 默认值
 });
+
+// 处理状态相关数据
+const isProcessing = ref(false);
+const processComplete = ref(false);
+const isStarting = ref(false);
+const currentStatus = ref('等待处理');
+const estimatedTime = ref('约2-5分钟');
+const processingProgress = ref(0);
+const currentStep = ref(0);
+
+// 进度条颜色配置
+const progressColors = [
+  { color: '#f56c6c', percentage: 20 },
+  { color: '#e6a23c', percentage: 40 },
+  { color: '#5cb87a', percentage: 60 },
+  { color: '#1989fa', percentage: 80 },
+  { color: '#6f7ad3', percentage: 100 },
+];
+
+// 处理状态定时器
+let processingTimer = null;
+let statusUpdateTimer = null;
+
+// 检查是否已降噪的辅助函数
+const isFileNoiseReduced = (fileInfo) => {
+  if (!fileInfo) return false;
+  
+  const clearValue = fileInfo.is_clear;
+  console.log('检查降噪状态:', { is_clear: clearValue, type: typeof clearValue });
+  
+  // 支持多种可能的值类型
+  return clearValue === '1' || clearValue === 1 || clearValue === true || clearValue === 'true';
+};
+
 const workflow1 = async () => {
   try {
+    // 先检查当前文件状态，避免重复处理
+    if (isFileNoiseReduced(getFileInfo.value)) {
+      ElMessage.warning('该文件已经完成降噪处理');
+      return;
+    }
+    
+    isStarting.value = true;
     console.log('taskId:', taskId.value, 'id:', id.value);
+    
+    // 启动前先检查一次最新状态
+    const checkRes = await getTaskFileDetail(id.value);
+    if (checkRes.data.code === 200 && isFileNoiseReduced(checkRes.data.data)) {
+      getFileInfo.value = checkRes.data.data;
+      isStarting.value = false;
+      ElMessage.success('文件已经完成降噪处理！');
+      return;
+    }
+    
     const res = await workflow(taskId.value, 2, id.value);
     console.log('降噪转写响应:', res);
+    
     if (res.data.code === 200) {
       ElMessage.success('降噪转写任务已启动');
+      
+      // 开始处理状态
+      isStarting.value = false;
+      isProcessing.value = true;
+      currentStep.value = 1;
+      currentStatus.value = '排队等待中';
+      processingProgress.value = 0;
+      
+      // 开始模拟处理进度
+      startProcessingSimulation();
+      
     } else {
+      isStarting.value = false;
       ElMessage.error(res.data.msg || '启动失败');
     }
   } catch (error) {
+    isStarting.value = false;
     console.error('启动降噪转写失败:', error);
     ElMessage.error('启动降噪转写失败');
   }
+};
+
+// 模拟处理进度（不自动完成，需要通过API检查真实状态）
+const startProcessingSimulation = () => {
+  let progress = 0;
+  
+  processingTimer = setInterval(() => {
+    // 进度增长但不会到达100%，最高到95%
+    progress += Math.random() * 2 + 0.5; // 随机增加0.5-2.5%
+    
+    // 限制最高到95%，留给真实状态检查来完成
+    if (progress > 95) {
+      progress = 95;
+    }
+    
+    // 更新步骤状态
+    if (progress < 20) {
+      currentStep.value = 1;
+      currentStatus.value = '排队等待中';
+      estimatedTime.value = '约3-5分钟';
+    } else if (progress < 80) {
+      currentStep.value = 2;
+      currentStatus.value = '降噪处理中';
+      estimatedTime.value = '约1-3分钟';
+    } else {
+      currentStep.value = 3;
+      currentStatus.value = '即将完成';
+      estimatedTime.value = '不到1分钟';
+    }
+    
+    processingProgress.value = Math.floor(progress);
+  }, 1200); // 每1.2秒更新一次，让进度更平缓
+  
+  // 开始定期检查真实状态
+  setTimeout(refreshFileInfo, 5000); // 5秒后开始第一次检查
+};
+
+// 刷新文件信息并检查降噪状态
+const refreshFileInfo = async () => {
+  try {
+    const res = await getTaskFileDetail(id.value);
+    if (res.data.code === 200) {
+      const newFileInfo = res.data.data;
+      
+      // 检查是否降噪完成
+      if (isFileNoiseReduced(newFileInfo)) {
+        // 降噪已完成，立即更新状态
+        getFileInfo.value = newFileInfo;
+        isProcessing.value = false;
+        processComplete.value = false; // 不显示处理完成弹窗，直接显示已完成状态
+        
+        // 清理定时器
+        if (processingTimer) {
+          clearInterval(processingTimer);
+          processingTimer = null;
+        }
+        
+        ElMessage.success('降噪处理已完成！');
+      } else {
+        // 降噪仍在处理中，继续更新文件信息但保持处理状态
+        getFileInfo.value = newFileInfo;
+        // 继续检查状态
+        if (isProcessing.value) {
+          setTimeout(refreshFileInfo, 3000); // 3秒后再次检查
+        }
+      }
+    }
+  } catch (error) {
+    console.error('刷新文件信息失败:', error);
+    // 出错时也继续检查（只有在处理中才继续）
+    if (isProcessing.value) {
+      setTimeout(refreshFileInfo, 5000); // 5秒后重试
+    }
+  }
+};
+
+// 跳转到降噪结果标签页
+const goToNoiseReductionTab = () => {
+  activeName.value = 'second';
+  processComplete.value = false;
 };
 
 // WaveSurfer 相关
@@ -966,6 +1243,14 @@ const transcription = () => {
 
 // 在组件卸载前清理事件监听
 onBeforeUnmount(() => {
+  // 清理定时器
+  if (processingTimer) {
+    clearInterval(processingTimer);
+  }
+  if (statusUpdateTimer) {
+    clearInterval(statusUpdateTimer);
+  }
+
   // 清理第一个页面的 WaveSurfer
   if (wavesurfer.value) {
     wavesurfer.value.destroy();
@@ -1601,5 +1886,220 @@ const downloadClearFile = () => {
 }
 .clearbtn{
   margin: 20px;
+}
+
+/* 处理状态相关样式 */
+.processing-container {
+  width: 96%;
+  margin: 20px auto;
+}
+
+.processing-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  border: 1px solid #e4e7ed;
+}
+
+.card-header {
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #409eff, #67c23a);
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  &.processing {
+    background: linear-gradient(135deg, #e6a23c, #f56c6c);
+  }
+
+  &.success {
+    background: linear-gradient(135deg, #67c23a, #5cb87a);
+  }
+
+  .header-icon {
+    font-size: 24px;
+
+    &.rotating {
+      animation: rotating 2s linear infinite;
+    }
+  }
+
+  h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+  }
+}
+
+.card-content {
+  padding: 24px;
+}
+
+.description {
+  color: #606266;
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+.start-btn {
+  width: 200px;
+  height: 44px;
+  font-size: 16px;
+  border-radius: 22px;
+}
+
+.status-info {
+  margin-bottom: 24px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  
+  .label {
+    color: #909399;
+    margin-right: 12px;
+    min-width: 80px;
+  }
+
+  .filename {
+    color: #409eff;
+    font-weight: 500;
+  }
+
+  .time {
+    color: #67c23a;
+    font-weight: 500;
+  }
+}
+
+.progress-section {
+  margin-bottom: 32px;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  
+  span {
+    font-weight: 500;
+    color: #303133;
+  }
+}
+
+.steps-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  padding: 20px 0;
+}
+
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  
+  .step-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #f5f7fa;
+    border: 2px solid #e4e7ed;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #c0c4cc;
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 8px;
+    transition: all 0.3s ease;
+  }
+
+  .step-text {
+    font-size: 14px;
+    color: #909399;
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+
+  &.active {
+    .step-icon {
+      background: #409eff;
+      border-color: #409eff;
+      color: white;
+      
+      .el-icon {
+        font-size: 16px;
+        animation: rotating 2s linear infinite;
+      }
+    }
+
+    .step-text {
+      color: #409eff;
+      font-weight: 500;
+    }
+  }
+
+  &.completed {
+    .step-icon {
+      background: #67c23a;
+      border-color: #67c23a;
+      color: white;
+    }
+
+    .step-text {
+      color: #67c23a;
+      font-weight: 500;
+    }
+  }
+}
+
+.step-line {
+  flex: 1;
+  height: 2px;
+  background: #e4e7ed;
+  margin: 0 16px;
+  position: relative;
+  top: -18px;
+  transition: all 0.3s ease;
+
+  &.completed {
+    background: #67c23a;
+  }
+}
+
+.processing-tips {
+  margin-top: 20px;
+
+  :deep(.el-alert__content) {
+    p {
+      margin: 4px 0;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+  }
+}
+
+.success-message {
+  color: #606266;
+  margin-bottom: 20px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+@keyframes rotating {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

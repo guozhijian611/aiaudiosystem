@@ -1,5 +1,19 @@
 <template>
   <div class="operationBox">
+    <!-- 任务名称显示 -->
+    <div class="task-header" v-if="taskInfo.name">
+      <h2 class="task-title">
+        <el-icon><Document /></el-icon>
+        <span>{{ taskInfo.name }}</span>
+      </h2>
+      <div class="task-meta">
+        <span class="task-number">任务编号：{{ taskInfo.number }}</span>
+        <span class="task-status" :class="getTaskStatusClass(taskInfo.status)">
+          {{ getTaskStatusText(taskInfo.status) }}
+        </span>
+      </div>
+    </div>
+    
     <el-tabs v-model="activeName" type="card" class="demo-tabs" @tab-click="handleClick">
       <el-tab-pane label="任务操作" name="first">
         <el-tabs v-model="activeName1" class="demo-tabs1" @tab-click="handleClick1">
@@ -313,6 +327,15 @@ const fileINfo = ref({
   transcribed:0,
   valid:0
 })
+// 任务基本信息
+const taskInfo = ref({
+  id: '',
+  name: '',
+  number: '',
+  status: '',
+  create_time: '',
+  update_time: ''
+});
 // 文件检测文件信息
 const detectionFile = ref({
   total:0,
@@ -839,6 +862,12 @@ const getTaskDetail1 = async () => {
     console.log('后端返回的原始数据：', res.data.data);
 
     if (res.data.code === 200) {
+      // 处理任务基本信息
+      if (res.data.data.task_info) {
+        taskInfo.value = res.data.data.task_info;
+        console.log('任务基本信息：', taskInfo.value);
+      }
+      
       let filteredData = res.data.data.list;
       console.log('后端返回的列表数据：', filteredData);
       console.log('后端返回的总数：', res.data.data.total);
@@ -1074,6 +1103,30 @@ const downloadFile = (content, filename, type) => {
   document.body.removeChild(downloadLink);
   window.URL.revokeObjectURL(url);
 };
+
+// 获取任务状态文本
+const getTaskStatusText = (status) => {
+  const statusMap = {
+    1: '空任务',
+    2: '已检测', 
+    3: '已转写',
+    4: '处理中',
+    5: '暂停中'
+  };
+  return statusMap[status] || '未知状态';
+};
+
+// 获取任务状态样式类
+const getTaskStatusClass = (status) => {
+  const classMap = {
+    1: 'status-empty',
+    2: 'status-detected',
+    3: 'status-transcribed', 
+    4: 'status-processing',
+    5: 'status-paused'
+  };
+  return classMap[status] || 'status-unknown';
+};
 </script>
 
 <style scoped lang="scss">
@@ -1081,6 +1134,77 @@ const downloadFile = (content, filename, type) => {
   position: relative;
   width: 100%;
   height: 100%;
+}
+
+/* 任务头部样式 */
+.task-header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px 24px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.task-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px 0;
+  font-size: 24px;
+  font-weight: 600;
+  
+  .el-icon {
+    font-size: 28px;
+  }
+}
+
+.task-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  
+  .task-number {
+    font-size: 14px;
+    opacity: 0.9;
+  }
+  
+  .task-status {
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 500;
+    
+    &.status-empty {
+      background: rgba(144, 147, 153, 0.2);
+      color: #909399;
+    }
+    
+    &.status-detected {
+      background: rgba(103, 194, 58, 0.2);
+      color: #67C23A;
+    }
+    
+    &.status-transcribed {
+      background: rgba(64, 158, 255, 0.2);
+      color: #409EFF;
+    }
+    
+    &.status-processing {
+      background: rgba(230, 162, 60, 0.2);
+      color: #E6A23C;
+    }
+    
+    &.status-paused {
+      background: rgba(245, 108, 108, 0.2);
+      color: #F56C6C;
+    }
+    
+    &.status-unknown {
+      background: rgba(144, 147, 153, 0.2);
+      color: #909399;
+    }
+  }
 }
 
 .demo-tabs1,
