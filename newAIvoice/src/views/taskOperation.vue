@@ -184,7 +184,7 @@
       </el-tab-pane>
     </el-tabs>
     <el-button v-for="button in buttons" :key="button.text" :type="button.type" class="returnBtn" text
-      @click="() => $router.push({ name: 'task-management' })">
+      @click="handleReturnToTaskManagement">
       {{ button.text }}
     </el-button>
   </div>
@@ -198,6 +198,7 @@ import TableSearch from "@/components/operation-search.vue";
 import { useRouter, useRoute } from "vue-router";
 import { getTaskDetail, uploadTask, workflow,getFileProgress,getFileTranscriptionProgress,getTaskStatistics } from "@/api/task";
 import { Document as DocxDocument, Paragraph, Packer, TextRun } from 'docx';
+import { useTabsStore } from "@/store/tabs";
 const id = ref("");
 const isHover = ref(false);
 const selectedFile = ref(null);
@@ -486,6 +487,7 @@ onUnmounted(() => {
 
 const router = useRouter();
 const route = useRoute();
+const tabs = useTabsStore();
 
 const dialogVisible = ref(false);
 const previewText = ref('');
@@ -954,6 +956,20 @@ const downloadFile = (content, filename, type) => {
   downloadLink.click();
   document.body.removeChild(downloadLink);
   window.URL.revokeObjectURL(url);
+};
+
+// 修改返回按钮的点击事件，使其在返回任务管理页面时删除当前任务操作页面的标签
+const handleReturnToTaskManagement = () => {
+  // 找到当前页面的标签索引并删除
+  const currentPath = route.fullPath;
+  const currentIndex = tabs.list.findIndex(item => item.path === currentPath);
+  
+  if (currentIndex !== -1) {
+    tabs.delTabsItem(currentIndex);
+  }
+  
+  // 跳转到任务管理页面
+  router.push({ name: 'task-management' });
 };
 </script>
 
