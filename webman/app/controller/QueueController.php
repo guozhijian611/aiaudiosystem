@@ -230,12 +230,16 @@ class QueueController
             $transcribedFiles = 0; // 已转写文件数（transcribe_status=1）
             $processingFiles = 0; // 正在处理的文件数
             
-            // 正在处理的步骤
+            // 正在处理或等待处理的步骤（除了已完成、失败、暂停状态外的所有状态）
             $processingSteps = [
-                QueueConstants::STEP_EXTRACTING,
-                QueueConstants::STEP_CLEARING,
-                QueueConstants::STEP_FAST_RECOGNIZING,
-                QueueConstants::STEP_TRANSCRIBING
+                QueueConstants::STEP_UPLOADED,           // 0 - 文件已上传，等待处理
+                QueueConstants::STEP_EXTRACTING,         // 1 - 正在提取音频
+                QueueConstants::STEP_EXTRACT_COMPLETED,  // 2 - 音频提取完成，等待降噪
+                QueueConstants::STEP_CLEARING,           // 3 - 正在音频降噪
+                QueueConstants::STEP_CLEAR_COMPLETED,    // 4 - 音频降噪完成，等待下一步处理
+                QueueConstants::STEP_FAST_RECOGNIZING,   // 5 - 正在快速识别
+                QueueConstants::STEP_FAST_COMPLETED,     // 6 - 快速识别完成，等待用户选择是否转写
+                QueueConstants::STEP_TRANSCRIBING        // 7 - 正在文本转写
             ];
             
             foreach ($taskInfos as $taskInfo) {
@@ -254,7 +258,7 @@ class QueueController
             $newStatus = QueueConstants::TASK_STATUS_EMPTY; // 默认空任务状态
             
             if ($processingFiles > 0) {
-                // 有文件正在处理中
+                // 有文件正在处理中或等待处理
                 $newStatus = QueueConstants::TASK_STATUS_PROCESSING; // 处理中
             } elseif ($transcribedFiles == $totalFiles) {
                 // 所有文件都已转写完成
@@ -263,8 +267,11 @@ class QueueController
                 // 所有文件都已检测完成但未全部转写
                 $newStatus = QueueConstants::TASK_STATUS_CHECKED; // 已检测
             } elseif ($detectedFiles > 0 || $transcribedFiles > 0) {
-                // 部分文件已处理但无正在处理的
+                // 部分文件已处理
                 $newStatus = QueueConstants::TASK_STATUS_CHECKED; // 已检测
+            } else {
+                // 所有文件都还没有开始处理
+                $newStatus = QueueConstants::TASK_STATUS_EMPTY; // 空任务
             }
 
             // 更新任务状态
@@ -273,7 +280,7 @@ class QueueController
                 $task->status = $newStatus;
                 $task->save();
                 
-                error_log("任务状态已更新 - 任务ID: {$taskId}, 新状态: {$newStatus}, 总文件: {$totalFiles}, 已检测: {$detectedFiles}, 已转写: {$transcribedFiles}, 处理中: {$processingFiles}");
+                error_log("任务状态已更新 - 任务ID: {$taskId}, 旧状态: {$task->status}, 新状态: {$newStatus}, 总文件: {$totalFiles}, 已检测: {$detectedFiles}, 已转写: {$transcribedFiles}, 处理中: {$processingFiles}");
             }
             
         } catch (\Exception $e) {
