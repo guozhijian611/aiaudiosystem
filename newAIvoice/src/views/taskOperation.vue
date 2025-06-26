@@ -40,21 +40,21 @@
             </div>
             <div class="fileListInput">
               <div class="uploadBtn">
-                <input type="file" multiple @change="handleFileChange" accept="audio/*,video/*" />
-                <el-button type="primary" size="large"><el-icon>
+                <input type="file" multiple @change="handleFileChange" accept="audio/*,video/*" style="display: none;" ref="fileInput" />
+                <el-button type="primary" size="large" @click="triggerFileInput"><el-icon>
                     <CirclePlus />
                   </el-icon>添加文件</el-button>
               </div>
             </div>
           </div>
           <div class="fileAction">
-            <el-button class="btn" size="large" type="primary" @click="uploadFiles"><el-icon>
+            <el-button class="btn" size="large" type="primary" @click="uploadFiles" :disabled="isButtonDisabled"><el-icon>
                 <DocumentAdd />
               </el-icon>上传文件</el-button>
-            <el-button class="btn" size="large" type="primary" @click="detection"><el-icon>
+            <el-button class="btn" size="large" type="primary" @click="detection" :disabled="isButtonDisabled"><el-icon>
                 <Loading />
               </el-icon>启动检测</el-button>
-            <el-button class="btn" size="large" type="primary" @click="transcription"><el-icon>
+            <el-button class="btn" size="large" type="primary" @click="transcription" :disabled="isButtonDisabled"><el-icon>
                 <EditPen />
               </el-icon>启动转写</el-button>
           </div>
@@ -113,20 +113,20 @@
         </el-tabs>
         <div class="fileBox4">
           <TableSearch :query="query" :options="searchOpt" :search="handleSearch" />
-          <el-table :data="tableData" border style="width: 100%">
-            <!-- <el-table-column type="selection" align="center" width="55" /> -->
+          <el-table :data="tableData" border style="width: 100%" @selection-change="handleSelectionChange">
+            <el-table-column type="selection" align="center" width="55" />
 
             <el-table-column label="文件名称" align="center" prop="filename" />
             <el-table-column label="大小" align="center" prop="size" />
             <el-table-column label="时长" align="center" prop="total_voice" show-overflow-tooltip />
             <el-table-column label="有效时长" align="center" prop="effective_voice" />
             <el-table-column label="语种" align="center" prop="language" />
-            <el-table-column label="处理状态" align="center" prop="status" />
+            <el-table-column label="处理状态" align="center" prop="step" />
 
             <el-table-column label="操作" align="center" width="500">
               <!-- 你可以在这里放操作按钮 -->
               <template #default="scope">
-                <el-button type="success" @click="dialogVisible = true"><el-icon>
+                <el-button type="success" @click="handlePreview(scope.row)"><el-icon>
                     <View />
                   </el-icon>转写预览</el-button>
                 <el-dropdown style="margin: 0 10px">
@@ -136,10 +136,10 @@
                   </el-button>
                   <template #dropdown>
                     <el-dropdown-menu>
-                      <el-dropdown-item>带时间戳的转写文件</el-dropdown-item>
-                      <el-dropdown-item>无时间戳转写文件</el-dropdown-item>
-                      <el-dropdown-item>word文档</el-dropdown-item>
-                      <el-dropdown-item>降噪文件</el-dropdown-item>
+                      <el-dropdown-item @click="downloadText('withTimestamp')">带时间戳的转写文件</el-dropdown-item>
+                      <el-dropdown-item @click="downloadText('withoutTimestamp')">无时间戳转写文件</el-dropdown-item>
+                      <el-dropdown-item @click="downloadText('word')">word文档</el-dropdown-item>
+                      <el-dropdown-item @click="downloadText('noise')">降噪文件</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
@@ -153,18 +153,28 @@
             </el-table-column>
           </el-table>
           <div class="operationBottom">
-            <el-button type="primary" class="btn" @click="transcription">选择文件转写</el-button>
+            <el-button type="primary" class="btn" @click="batchTranscription">选择文件转写</el-button>
             <el-pagination :current-page="page.index" :page-size="page.size" :page-sizes="[5, 10, 15, 20]"
               layout="total, sizes, prev, pager, next, jumper" :total="page.total" @size-change="changeSize"
               @current-change="changePage" />
           </div>
         </div>
         <el-dialog v-model="dialogVisible" title="转写预览" width="600" :style="{ height: '500px' }"
-          :before-close="handleClose">
-          <span>转写的文本预览...</span>
+          >
+          <div class="transcriptionPreviewContent">
+            <div v-if="previewText" class="lyrics-container">
+              <div v-for="(segment, index) in JSON.parse(previewText).segments" :key="index" class="lyric-line">
+                <span class="time-stamp">[{{ formatTime(segment.start) }} - {{ formatTime(segment.end) }}]</span>
+                <span v-if="segment.speaker" class="speaker">({{ segment.speaker }})</span>
+                <span class="lyric-text">{{ segment.text }}</span>
+              </div>
+            </div>
+            <div v-else class="no-content">
+              暂无转写内容
+            </div>
+          </div>
           <template #footer>
             <div class="dialog-footer">
-              <!-- <el-button @click="dialogVisible = false">Cancel</el-button> -->
               <el-button type="primary" @click="dialogVisible = false">
                 确认
               </el-button>
@@ -183,15 +193,16 @@
 <script lang="ts" setup>
 import { ref, computed, reactive, nextTick, onMounted, watch, onActivated, onUnmounted } from "vue";
 import type { TabsPaneContext } from "element-plus";
-import { ArrowDown } from "@element-plus/icons-vue";
+import { ArrowDown, Document, CirclePlus, SuccessFilled, CircleClose, DocumentAdd, Loading, EditPen, View, Download, Search, MuteNotification } from "@element-plus/icons-vue";
 import TableSearch from "@/components/operation-search.vue";
 import { useRouter, useRoute } from "vue-router";
 import { getTaskDetail, uploadTask, workflow,getFileProgress,getFileTranscriptionProgress,getTaskStatistics } from "@/api/task";
+import { Document as DocxDocument, Paragraph, Packer, TextRun } from 'docx';
 const id = ref("");
 const isHover = ref(false);
 const selectedFile = ref(null);
 const uploadFileList = reactive([]);
-const selectedFiles = reactive(new Map()); // 用于存储选择的文件
+const selectedFiles = ref<any[]>([]);
 import { useUploadStore } from "@/store/uploadStore";
 // 任务详情信息
 const fileINfo = ref({
@@ -223,6 +234,12 @@ const isFileExists = (fileName) => {
   return uploadFileList.some(file => file.name === fileName);
 };
 
+const fileInput = ref(null);
+
+const triggerFileInput = () => {
+  fileInput.value.click();
+};
+
 const handleFileChange = async (event) => {
   const files = event.target.files;
   if (files && files.length > 0) {
@@ -231,8 +248,8 @@ const handleFileChange = async (event) => {
       const file = files[i];
 
       // 检查文件类型
-      const fileType = file.type.toLowerCase();
-      const isAudioOrVideo = fileType.startsWith('audio/') || fileType.startsWith('video/');
+      const is_quick = file.type.toLowerCase();
+      const isAudioOrVideo = is_quick.startsWith('audio/') || is_quick.startsWith('video/');
 
       if (!isAudioOrVideo) {
         ElMessage.warning(`文件 "${file.name}" 不是音频或视频文件，已跳过`);
@@ -252,7 +269,12 @@ const handleFileChange = async (event) => {
         isHover: false,
         file: file // 保存文件对象
       });
-      selectedFiles.set(fileId, file);
+      selectedFiles.value.push({
+        id: fileId,
+        name: file.name,
+        isHover: false,
+        file: file // 保存文件对象
+      });
     }
   } else {
     ElMessage.warning("请选择要上传的文件");
@@ -263,23 +285,29 @@ const handleFileChange = async (event) => {
 
 const deleteFile = (index) => {
   const fileId = uploadFileList[index].id;
-  selectedFiles.delete(fileId); // 从Map中删除文件
+  selectedFiles.value = selectedFiles.value.filter(file => file.id !== fileId);
   uploadFileList.splice(index, 1);
 };
 
+// 添加按钮状态控制变量
+const isButtonDisabled = ref(false);
+
+// 修改uploadFiles函数
 const uploadFiles = async () => {
-  console.log(1234567);
-  if (selectedFiles.size === 0) {
+  if (selectedFiles.value.length === 0) {
     ElMessage.warning("请先选择文件");
     return;
   }
 
   try {
+    // 禁用按钮
+    isButtonDisabled.value = true;
+    
     // 构建文件对象
     const fileObjects = {};
     let index = 1;
-    for (const [_, file] of selectedFiles) {
-      fileObjects[`file${index}`] = file;
+    for (const file of selectedFiles.value) {
+      fileObjects[`file${index}`] = file.file;
       index++;
     }
     ElMessage.success("正在上传文件...");
@@ -288,18 +316,35 @@ const uploadFiles = async () => {
     console.log(187, res);
 
     if (res.data.code === 200) {
-      // ElMessage.success("文件上传成功");
+      ElMessage.success("文件上传成功");
       // 清空已上传的文件列表
       uploadFileList.length = 0;
-      selectedFiles.clear();
+      selectedFiles.value = [];
+      
+      // 重新获取任务统计信息
+      const statsRes = await getTaskStatistics(id.value);
+      if (statsRes.data.code === 200) {
+        fileINfo.value = statsRes.data.data;
+        console.log('更新后的任务统计信息：', fileINfo.value);
+      }
+      
+      // 3秒后启用按钮
+      setTimeout(() => {
+        isButtonDisabled.value = false;
+        ElMessage.success("可以开始检测或转写");
+      }, 3000);
     } else if (res.data.code === 401) {
       router.push("/login");
     } else {
       ElMessage.error(res.data.msg || "文件上传失败");
+      // 上传失败时也启用按钮
+      isButtonDisabled.value = false;
     }
   } catch (error) {
     console.error("文件上传失败:", error);
     ElMessage.error("文件上传失败，请稍后重试");
+    // 发生错误时也启用按钮
+    isButtonDisabled.value = false;
   }
 };
 
@@ -307,14 +352,57 @@ const uploadFiles = async () => {
 const canAccessDetection = ref(false);
 const canAccessTranscription = ref(false);
 
+// 添加step状态映射
+const stepStatusMap = {
+  0: '文件已上传，等待处理',
+  1: '正在提取音频',
+  2: '音频提取完成，等待降噪',
+  3: '正在音频降噪',
+  4: '音频降噪完成，等待下一步处理',
+  5: '正在快速识别',
+  6: '快速识别完成，等待用户选择是否转写',
+  7: '正在文本转写',
+  8: '所有处理完成',
+  9: '处理失败',
+  10: '任务暂停',
+  11: '未降噪的文本转写'
+};
+
+// 添加定时器变量
+let detectionTimer = null;
+let transcriptionTimer = null;
+
 // 修改检测函数
 const detection = async () => {
   try {
+    // 检查是否有文件
+    if (fileINfo.value.total === 0) {
+      ElMessage.warning('请先上传文件');
+      return;
+    }
+
     activeName.value = "second";
     canAccessDetection.value = true; // 允许访问检测页面
     const res1 = await getFileProgress(id.value);
     console.log(1799, res1);
     detectionFile.value = res1.data.data;
+    
+    // 清除之前的定时器
+    if (detectionTimer) {
+      clearInterval(detectionTimer);
+    }
+    
+    // 设置定时器，每10秒请求一次进度
+    detectionTimer = setInterval(async () => {
+      const res = await getFileProgress(id.value);
+      if (res.data.code === 200) {
+        detectionFile.value = res.data.data;
+        // 如果进度达到100%，清除定时器
+        if (res.data.data.progress === 100) {
+          clearInterval(detectionTimer);
+        }
+      }
+    }, 10000);
     
     // 等待2秒让服务器处理文件
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -326,19 +414,24 @@ const detection = async () => {
       // ElMessage.success("检测任务已启动");
     } else {
       ElMessage.error(res.data.msg || "启动检测失败");
+      clearInterval(detectionTimer);
     }
   } catch (error) {
     console.error("启动检测失败:", error);
     ElMessage.error("启动检测失败，请稍后重试");
+    clearInterval(detectionTimer);
   }
 };
-
-// 添加定时器来更新进度
-let progressTimer: any = null;
 
 // 修改转写函数
 const transcription = async () => {
   try {
+    // 检查是否有文件
+    if (fileINfo.value.total === 0) {
+      ElMessage.warning('请先上传文件');
+      return;
+    }
+
     activeName.value = "third";
     canAccessTranscription.value = true; // 允许访问转写页面
     const res1 = await getFileTranscriptionProgress(id.value);
@@ -346,21 +439,21 @@ const transcription = async () => {
     transitionFile.value = res1.data.data;
     
     // 清除之前的定时器
-    if (progressTimer) {
-      clearInterval(progressTimer);
+    if (transcriptionTimer) {
+      clearInterval(transcriptionTimer);
     }
     
-    // 设置定时器定期更新进度
-    progressTimer = setInterval(async () => {
+    // 设置定时器，每10秒请求一次进度
+    transcriptionTimer = setInterval(async () => {
       const res = await getFileTranscriptionProgress(id.value);
       if (res.data.code === 200) {
         transitionFile.value = res.data.data;
         // 如果进度达到100%，清除定时器
         if (res.data.data.progress === 100) {
-          clearInterval(progressTimer);
+          clearInterval(transcriptionTimer);
         }
       }
-    }, 3000);
+    }, 10000);
     
     // 等待2秒让服务器处理文件
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -372,17 +465,22 @@ const transcription = async () => {
       // ElMessage.success("转写任务已启动");
     } else {
       ElMessage.error(res.data.msg || "启动转写失败");
+      clearInterval(transcriptionTimer);
     }
   } catch (error) {
     console.error("启动转写失败:", error);
     ElMessage.error("启动转写失败，请稍后重试");
+    clearInterval(transcriptionTimer);
   }
 };
 
-// 组件卸载时清除定时器
+// 组件卸载时清除所有定时器
 onUnmounted(() => {
-  if (progressTimer) {
-    clearInterval(progressTimer);
+  if (detectionTimer) {
+    clearInterval(detectionTimer);
+  }
+  if (transcriptionTimer) {
+    clearInterval(transcriptionTimer);
   }
 });
 
@@ -390,6 +488,7 @@ const router = useRouter();
 const route = useRoute();
 
 const dialogVisible = ref(false);
+const previewText = ref('');
 
 const handleClose = (done: () => void) => {
   ElMessageBox.confirm("确定关闭窗口吗?")
@@ -403,17 +502,21 @@ const handleClose = (done: () => void) => {
 import { fetchFileData } from "@/api";
 // 查询相关
 const query = reactive({
-  fileType: "",
-  status: "",
+  is_quick: "",
+  step: "",
 });
 const handleSearch = () => {
+  console.log('触发搜索，当前搜索条件：', {
+    is_quick: query.is_quick,
+    step: query.step
+  });
   page.index = 1;
   getTaskDetail1();
 };
-const searchOpt = ref<FormOptionList[]>([
+const searchOpt = ref([
   {
     type: "select",
-    prop: "fileType",
+    prop: "is_quick",
     placeholder: "文件类型",
     activeValue: "全部文件",
     opts: [
@@ -423,14 +526,23 @@ const searchOpt = ref<FormOptionList[]>([
   },
   {
     type: "select",
-    prop: "status",
+    prop: "step",
     placeholder: "处理状态",
     activeValue: "全部",
     opts: [
       { label: "全部", value: "全部" },
-      { label: "已检测", value: "已检测" },
-      { label: "已转写", value: "已转写" },
-      { label: "已降噪", value: "已降噪" },
+      { label: "文件已上传，等待处理", value: "文件已上传，等待处理" },
+      { label: "正在提取音频", value: "正在提取音频" },
+      { label: "音频提取完成，等待降噪", value: "音频提取完成，等待降噪" },
+      { label: "正在音频降噪", value: "正在音频降噪" },
+      { label: "音频降噪完成，等待下一步处理", value: "音频降噪完成，等待下一步处理" },
+      { label: "正在快速识别", value: "正在快速识别" },
+      { label: "快速识别完成，等待用户选择是否转写", value: "快速识别完成，等待用户选择是否转写" },
+      { label: "正在文本转写", value: "正在文本转写" },
+      { label: "所有处理完成", value: "所有处理完成" },
+      { label: "处理失败", value: "处理失败" },
+      { label: "任务暂停", value: "任务暂停" },
+      { label: "未降噪的文本转写", value: "未降噪的文本转写" }
     ],
   },
 ]);
@@ -526,15 +638,41 @@ const toFile = (index, fileId) => {
     return;
   }
 
-  router.push({
-    path: "file-view",
-    query: {
-      index,
-      id: fileId, // 文件id
-      taskId: fileInfo.tid, // 任务id
-      // fileInfo: JSON.stringify(fileInfo) // 将文件信息转换为字符串传递
+  // 如果是降噪操作（index === 2）
+  if (index === 2) {
+    // 判断clear_url是否为空
+    if (!fileInfo.clear_url) {
+      // 如果为空，跳转到降噪转写页面
+      router.push({
+        path: "file-view",
+        query: {
+          index: "3", // 降噪转写页面
+          id: fileId,
+          taskId: fileInfo.tid
+        }
+      });
+    } else {
+      // 如果不为空，跳转到文件降噪页面
+      router.push({
+        path: "file-view",
+        query: {
+          index: "2", // 文件降噪页面
+          id: fileId,
+          taskId: fileInfo.tid
+        }
+      });
     }
-  });
+  } else {
+    // 其他操作保持原有逻辑
+    router.push({
+      path: "file-view",
+      query: {
+        index,
+        id: fileId,
+        taskId: fileInfo.tid
+      }
+    });
+  }
 };
 // 获取文件详情
 const page = reactive({
@@ -542,52 +680,63 @@ const page = reactive({
   size: 5,
   total: 0,
 });
+// 添加状态映射对象
+const statusToNumberMap = {
+  '文件已上传，等待处理': '0',
+  '正在提取音频': '1',
+  '音频提取完成，等待降噪': '2',
+  '正在音频降噪': '3',
+  '音频降噪完成，等待下一步处理': '4',
+  '正在快速识别': '5',
+  '快速识别完成，等待用户选择是否转写': '6',
+  '正在文本转写': '7',
+  '所有处理完成': '8',
+  '处理失败': '9',
+  '任务暂停': '10',
+  '未降噪的文本转写': '11'
+};
+
 const getTaskDetail1 = async () => {
   try {
-    const res = await getTaskDetail(id.value, page.index, page.size, {
-      search: query.fileType !== "全部文件" ? query.fileType : undefined,
+    // 打印搜索参数
+    console.log('搜索参数：', {
+      is_quick: query.is_quick,
+      step: query.step,
+      page: page.index,
+      size: page.size
+    });
+
+    const searchParams = {
+      is_quick: query.is_quick === "有效文件" ? "1" : "0",
+      step: query.step !== "全部" ? statusToNumberMap[query.step] : null,
       sort: "update_time",
       order: "desc"
-    });
+    };
+
+    // 打印发送到后端的参数
+    console.log('发送到后端的参数：', searchParams);
+
+    const res = await getTaskDetail(id.value, page.index, page.size, searchParams);
+    console.log('后端返回的原始数据：', res.data.data);
 
     if (res.data.code === 200) {
       let filteredData = res.data.data.list;
-      let totalData = res.data.data.list; // 保存原始数据用于计算总数
+      console.log('后端返回的列表数据：', filteredData);
+      console.log('后端返回的总数：', res.data.data.total);
 
-      // 处理文件类型筛选
-      if (query.fileType === "有效文件") {
-        filteredData = filteredData.filter(file =>
-          file.effective_voice &&
-          file.effective_voice !== "0" &&
-          file.effective_voice !== ""
-        );
-        totalData = totalData.filter(file =>
-          file.effective_voice &&
-          file.effective_voice !== "0" &&
-          file.effective_voice !== ""
-        );
-      }
-
-      // 处理状态筛选
-      if (query.status && query.status !== "全部") {
-        filteredData = filteredData.filter(file =>
-          file.status === query.status
-        );
-        totalData = totalData.filter(file =>
-          file.status === query.status
-        );
-      }
-
-      // 确保每个文件对象都有id属性
+      // 确保每个文件对象都有id属性，并转换step为文字描述
       filteredData = filteredData.map(file => ({
         ...file,
-        id: file.id || file.file_id || file.task_id // 尝试不同的可能id字段
+        id: file.id || file.file_id || file.task_id,
+        step: stepStatusMap[file.step] || '未知状态'
       }));
 
-      console.log('设置到表格的数据：', filteredData);
+      console.log('处理后的表格数据：', filteredData);
       tableData.value = filteredData;
-      // 使用筛选后的数据长度作为总数
-      page.total = totalData.length;
+      
+      // 使用后端返回的总数
+      page.total = res.data.data.total;
+      console.log('设置的分页总数：', page.total);
     } else if (res.data.code === 401) {
       router.push("/login");
     } else {
@@ -650,6 +799,162 @@ onMounted(async() => {
     getTaskDetail1();
   }
 });
+
+// 处理表格多选
+const handleSelectionChange = (selection: any[]) => {
+  selectedFiles.value = selection;
+  console.log('当前选中的文件：', selection);
+};
+
+// 批量转写函数
+const batchTranscription = async () => {
+  if (selectedFiles.value.length === 0) {
+    ElMessage.warning('请先选择要转写的文件');
+    return;
+  }
+
+  try {
+    // 获取选中文件的id数组
+    const fileIds = selectedFiles.value.map(file => file.id);
+    console.log('要转写的文件ID数组：', fileIds);
+    
+    // 调用转写接口
+    const res = await workflow(id.value, 4, fileIds);
+    console.log('转写接口返回数据：', res);
+    
+    if (res.data.code === 200) {
+      ElMessage.success('转写任务已启动');
+      // 刷新表格数据
+      getTaskDetail1();
+    } else {
+      ElMessage.error(res.data.msg || '启动转写失败');
+    }
+  } catch (error) {
+    console.error('启动转写失败:', error);
+    ElMessage.error('启动转写失败，请稍后重试');
+  }
+};
+
+// 格式化时间
+const formatTime = (time: number) => {
+  const minutes = Math.floor(time / 60);
+  const seconds = Math.floor(time % 60);
+  const milliseconds = Math.floor((time % 1) * 1000);
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
+};
+
+// 修改表格操作列的转写预览按钮点击事件
+const handlePreview = (row) => {
+  previewText.value = row.text_info;
+  dialogVisible.value = true;
+};
+
+// 下载文本
+const downloadText = (type) => {
+  if (!previewText.value) {
+    ElMessage.warning('暂无转写内容');
+    return;
+  }
+
+  try {
+    const segments = JSON.parse(previewText.value).segments;
+    let content = '';
+    const currentFile = tableData.value.find(item => item.text_info === previewText.value);
+    const filename = currentFile?.filename.split('.')[0] || '转写文本';
+
+    switch (type) {
+      case 'withTimestamp':
+        content = segments.map(segment => 
+          `[${formatTime(segment.start)} - ${formatTime(segment.end)}]${segment.speaker ? ` (${segment.speaker})` : ''} ${segment.text}`
+        ).join('\n');
+        downloadFile(content, `${filename}_带时间戳.txt`, 'text/plain');
+        break;
+
+      case 'withoutTimestamp':
+        content = segments.map(segment => 
+          `${segment.speaker ? `(${segment.speaker}) ` : ''}${segment.text}`
+        ).join('\n');
+        downloadFile(content, `${filename}_无时间戳.txt`, 'text/plain');
+        break;
+
+      case 'word':
+        // 构建HTML内容
+        let htmlContent = `
+          <html xmlns:o="urn:schemas-microsoft-com:office:office" 
+                xmlns:w="urn:schemas-microsoft-com:office:word" 
+                xmlns="http://www.w3.org/TR/REC-html40">
+          <head>
+            <meta charset="utf-8">
+            <title>${filename}</title>
+          </head>
+          <body>
+        `;
+
+        segments.forEach(segment => {
+          htmlContent += `
+            <p>
+              <span style="color: #666;">[${formatTime(segment.start)} - ${formatTime(segment.end)}]</span>
+              ${segment.speaker ? `<span style="color: #409EFF;">(${segment.speaker})</span> ` : ''}
+              <span style="color: #333;">${segment.text}</span>
+            </p>
+          `;
+        });
+
+        htmlContent += '</body></html>';
+
+        // 创建Blob对象
+        const blob = new Blob([htmlContent], { type: 'application/msword' });
+        
+        // 创建下载链接
+        const downloadLink = document.createElement('a');
+        downloadLink.href = URL.createObjectURL(blob);
+        downloadLink.download = `${filename}_转写文本.doc`;
+        
+        // 触发下载
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        window.URL.revokeObjectURL(downloadLink.href);
+        break;
+
+      case 'noise':
+        if (!currentFile) {
+          ElMessage.warning('未找到文件信息');
+          return;
+        }
+        
+        if (!currentFile.clear_url) {
+          ElMessage.warning('请先进行降噪处理');
+          return;
+        }
+        
+        // 下载降噪文件
+        const noiseLink = document.createElement('a');
+        noiseLink.href = currentFile.clear_url;
+        noiseLink.download = `${filename}_降噪文件.${currentFile.clear_url.split('.').pop()}`;
+        document.body.appendChild(noiseLink);
+        noiseLink.click();
+        document.body.removeChild(noiseLink);
+        break;
+    }
+  } catch (error) {
+    console.error('下载失败:', error);
+    ElMessage.error('下载失败');
+  }
+};
+
+// 下载文件
+const downloadFile = (content, filename, type) => {
+  const blob = new Blob([content], { type });
+  const url = window.URL.createObjectURL(blob);
+  const downloadLink = document.createElement('a');
+  downloadLink.href = url;
+  downloadLink.download = filename;
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  document.body.removeChild(downloadLink);
+  window.URL.revokeObjectURL(url);
+};
 </script>
 
 <style scoped lang="scss">
@@ -851,5 +1156,48 @@ onMounted(async() => {
   position: absolute;
   bottom: 10px;
   right: 10px;
+}
+
+.transcriptionPreviewContent {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 20px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+
+  .lyrics-container {
+    .lyric-line {
+      margin-bottom: 8px;
+      line-height: 1.5;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+
+      .time-stamp {
+        color: #666;
+        font-size: 14px;
+        white-space: nowrap;
+      }
+
+      .speaker {
+        color: #409EFF;
+        font-size: 14px;
+        white-space: nowrap;
+      }
+
+      .lyric-text {
+        color: #333;
+        font-size: 14px;
+        flex: 1;
+      }
+    }
+  }
+
+  .no-content {
+    text-align: center;
+    color: #909399;
+    font-size: 14px;
+    padding: 20px;
+  }
 }
 </style>

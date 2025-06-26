@@ -77,7 +77,8 @@ export const uploadTask = (task_id: number, files?: { [key: string]: File }) => 
 }
 // 获取任务详情
 export const getTaskDetail = (task_id: string, page: number, limit: number, options?: {
-    search?: string;
+    is_quick?: string;
+    step?: string;
     sort?: string;
     order?: string;
 }) => {
@@ -88,7 +89,8 @@ export const getTaskDetail = (task_id: string, page: number, limit: number, opti
             task_id,
             page,
             limit,
-            search: options?.search || null,
+            is_quick: options?.is_quick || null,
+            step: options?.step || null,
             sort: options?.sort || null,
             order: options?.order || null
         }
