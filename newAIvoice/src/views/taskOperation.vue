@@ -269,7 +269,7 @@
             </el-table-column>
           </el-table>
           <div class="operationBottom">
-            <el-button type="primary" class="btn" @click="batchTranscription">选择文件转写</el-button>
+            <el-button type="primary" class="btn" @click="batchTranscription" :loading="isBatchProcessing">选择文件转写</el-button>
             <el-pagination :current-page="page.index" :page-size="page.size" :page-sizes="[5, 10, 15, 20]"
               layout="total, sizes, prev, pager, next, jumper" :total="page.total" @size-change="changeSize"
               @current-change="changePage" />
@@ -299,6 +299,174 @@
         </el-dialog>
       </el-tab-pane>
     </el-tabs>
+    
+    <!-- 批量转写进度弹窗 -->
+    <el-dialog 
+      v-model="batchProcessingVisible" 
+      title="批量转写处理" 
+      width="700px" 
+      :close-on-click-modal="true"
+      :close-on-press-escape="true"
+      :show-close="true"
+      @close="handleBatchDialogClose"
+    >
+      <!-- 处理中状态 -->
+      <div v-if="isBatchProcessing" class="batch-processing-status">
+        <div class="processing-card">
+          <div class="card-header processing">
+            <el-icon class="header-icon rotating"><Loading /></el-icon>
+            <h3>正在处理中...</h3>
+          </div>
+          <div class="card-content">
+            <div class="status-info">
+              <div class="status-item">
+                <span class="label">当前状态：</span>
+                <el-tag type="warning" effect="plain">{{ batchCurrentStatus }}</el-tag>
+              </div>
+              <div class="status-item">
+                <span class="label">处理文件：</span>
+                <span class="filename">{{ batchProcessingFiles.length }}个文件</span>
+              </div>
+              <div class="status-item">
+                <span class="label">预计时间：</span>
+                <span class="time">{{ batchEstimatedTime }}</span>
+              </div>
+            </div>
+            
+            <!-- 进度条 -->
+            <div class="progress-section">
+              <div class="progress-header">
+                <span>处理进度</span>
+                <span>{{ batchProcessingProgress }}%</span>
+              </div>
+              <el-progress 
+                :percentage="batchProcessingProgress" 
+                :status="batchProcessingProgress === 100 ? 'success' : ''"
+                :stroke-width="8"
+                :color="progressColors"
+              />
+            </div>
+            
+            <!-- 文件处理列表 -->
+            <div class="file-list-section">
+              <h4>文件处理状态</h4>
+              <div class="file-list">
+                <div 
+                  v-for="file in batchProcessingFiles" 
+                  :key="file.id" 
+                  class="file-item"
+                  :class="getFileStatusClass(file.currentStatus)"
+                >
+                  <div class="file-info">
+                    <el-icon class="file-icon"><Document /></el-icon>
+                    <span class="file-name">{{ file.filename }}</span>
+                  </div>
+                  <div class="file-status">
+                    <el-tag 
+                      :type="getFileTagType(file.currentStatus)" 
+                      size="small"
+                    >
+                      {{ getFileStatusText(file.currentStatus) }}
+                    </el-tag>
+                    <el-icon v-if="file.currentStatus === 'processing'" class="loading-icon"><Loading /></el-icon>
+                    <el-icon v-else-if="file.currentStatus === 'completed'" class="success-icon"><CircleCheck /></el-icon>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 处理步骤 -->
+            <div class="steps-section">
+              <div class="step-item" :class="{ active: batchCurrentStep >= 1, completed: batchCurrentStep > 1 }">
+                <div class="step-icon">
+                  <el-icon v-if="batchCurrentStep > 1"><Check /></el-icon>
+                  <el-icon v-else-if="batchCurrentStep === 1"><Loading /></el-icon>
+                  <span v-else>1</span>
+                </div>
+                <span class="step-text">排队等待</span>
+              </div>
+              <div class="step-line" :class="{ completed: batchCurrentStep > 1 }"></div>
+              <div class="step-item" :class="{ active: batchCurrentStep >= 2, completed: batchCurrentStep > 2 }">
+                <div class="step-icon">
+                  <el-icon v-if="batchCurrentStep > 2"><Check /></el-icon>
+                  <el-icon v-else-if="batchCurrentStep === 2"><Loading /></el-icon>
+                  <span v-else>2</span>
+                </div>
+                <span class="step-text">文本转写</span>
+              </div>
+              <div class="step-line" :class="{ completed: batchCurrentStep > 2 }"></div>
+              <div class="step-item" :class="{ active: batchCurrentStep >= 3, completed: batchCurrentStep > 3 }">
+                <div class="step-icon">
+                  <el-icon v-if="batchCurrentStep > 3"><Check /></el-icon>
+                  <el-icon v-else-if="batchCurrentStep === 3"><Loading /></el-icon>
+                  <span v-else>3</span>
+                </div>
+                <span class="step-text">完成处理</span>
+              </div>
+            </div>
+            
+            <div class="processing-tips">
+              <el-alert
+                title="处理提示"
+                type="info"
+                :closable="false"
+                show-icon
+              >
+                <template #default>
+                  <p>• 批量转写正在进行中，请保持页面打开</p>
+                  <p>• 处理时间取决于文件数量和大小</p>
+                  <p>• 处理完成后将自动刷新任务数据</p>
+                </template>
+              </el-alert>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 处理完成状态 -->
+      <div v-else-if="batchProcessComplete" class="batch-process-complete">
+        <div class="processing-card">
+          <div class="card-header success">
+            <el-icon class="header-icon"><CircleCheck /></el-icon>
+            <h3>处理完成</h3>
+          </div>
+          <div class="card-content">
+            <p class="success-message">批量转写处理已完成！共处理了 {{ batchProcessingFiles.length }} 个文件。</p>
+            
+            <!-- 完成文件列表 -->
+            <div class="completed-files">
+              <h4>处理结果</h4>
+              <div class="file-list">
+                <div 
+                  v-for="file in batchProcessingFiles" 
+                  :key="file.id" 
+                  class="file-item completed"
+                >
+                  <div class="file-info">
+                    <el-icon class="file-icon"><Document /></el-icon>
+                    <span class="file-name">{{ file.filename }}</span>
+                  </div>
+                  <div class="file-status">
+                    <el-tag type="success" size="small">已完成</el-tag>
+                    <el-icon class="success-icon"><CircleCheck /></el-icon>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="action-buttons">
+              <el-button type="success" @click="closeBatchProcessingDialog">确认</el-button>
+              <el-button type="primary" @click="refreshTaskData">刷新任务数据</el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <template #footer>
+        <div class="dialog-footer" v-if="!isBatchProcessing && !batchProcessComplete">
+          <el-button @click="batchProcessingVisible = false">取消</el-button>
+        </div>
+      </template>
+    </el-dialog>
     <el-button v-for="button in buttons" :key="button.text" :type="button.type" class="returnBtn" text
       @click="() => $router.push({ name: 'task-management' })">
       {{ button.text }}
@@ -309,7 +477,7 @@
 <script lang="ts" setup>
 import { ref, computed, reactive, nextTick, onMounted, watch, onActivated, onUnmounted } from "vue";
 import type { TabsPaneContext } from "element-plus";
-import { ArrowDown, Document, CirclePlus, SuccessFilled, CircleClose, DocumentAdd, Loading, EditPen, View, Download, Search, MuteNotification } from "@element-plus/icons-vue";
+import { ArrowDown, Document, CirclePlus, SuccessFilled, CircleClose, DocumentAdd, Loading, EditPen, View, Download, Search, MuteNotification, Check, CircleCheck } from "@element-plus/icons-vue";
 import TableSearch from "@/components/operation-search.vue";
 import { useRouter, useRoute } from "vue-router";
 import { getTaskDetail, uploadTask, workflow,getFileProgress,getFileTranscriptionProgress,getTaskStatistics } from "@/api/task";
@@ -362,6 +530,20 @@ const progressColors = [
   { color: '#1989fa', percentage: 80 },
   { color: '#6f7ad3', percentage: 100 },
 ];
+
+// 批量处理相关状态
+const batchProcessingVisible = ref(false);
+const isBatchProcessing = ref(false);
+const batchProcessComplete = ref(false);
+const batchCurrentStatus = ref('等待处理');
+const batchEstimatedTime = ref('约2-5分钟');
+const batchProcessingProgress = ref(0);
+const batchCurrentStep = ref(0);
+const batchProcessingFiles = ref([]); // 存储处理中的文件信息
+
+// 批量处理定时器
+let batchProcessingTimer = null;
+let batchStatusCheckTimer = null;
 
 // 检查文件是否已存在
 const isFileExists = (fileName) => {
@@ -615,6 +797,12 @@ onUnmounted(() => {
   }
   if (transcriptionTimer) {
     clearInterval(transcriptionTimer);
+  }
+  if (batchProcessingTimer) {
+    clearInterval(batchProcessingTimer);
+  }
+  if (batchStatusCheckTimer) {
+    clearTimeout(batchStatusCheckTimer);
   }
 });
 
@@ -962,9 +1150,58 @@ const batchTranscription = async () => {
   }
 
   try {
+    // 初始化处理文件列表，记录初始状态
+    batchProcessingFiles.value = selectedFiles.value.map(file => {
+      // 找到原始数字step值
+      const originalFile = tableData.value.find(f => f.id === file.id);
+      const originalStep = originalFile ? originalFile.step : 0;
+      
+      // 如果step是字符串，需要转换回数字
+      let numericStep = 0;
+      if (typeof originalStep === 'string') {
+        // 从stepStatusMap反向查找数字
+        for (const [key, value] of Object.entries(stepStatusMap)) {
+          if (value === originalStep) {
+            numericStep = parseInt(key);
+            break;
+          }
+        }
+      } else {
+        numericStep = originalStep || 0;
+      }
+      
+      console.log(`文件 ${file.filename} 初始状态:`, {
+        id: file.id,
+        filename: file.filename,
+        originalStep: originalStep,
+        numericStep: numericStep,
+        update_time: file.update_time
+      });
+      
+      return {
+        id: file.id,
+        filename: file.filename,
+        currentStatus: 'waiting', // waiting, processing, completed
+        initialStep: numericStep,
+        initialUpdateTime: file.update_time || new Date().toISOString()
+      };
+    });
+
+    // 显示处理弹窗
+    batchProcessingVisible.value = true;
+    isBatchProcessing.value = true;
+    batchProcessComplete.value = false;
+    batchCurrentStep.value = 1;
+    batchCurrentStatus.value = '排队等待中';
+    batchProcessingProgress.value = 0;
+    
+    // 开始进度模拟
+    startBatchProcessingSimulation();
+
     // 获取选中文件的id数组
     const fileIds = selectedFiles.value.map(file => file.id);
     console.log('要转写的文件ID数组：', fileIds);
+    console.log('初始文件状态：', batchProcessingFiles.value);
     
     // 调用转写接口
     const res = await workflow(id.value, 4, fileIds);
@@ -972,14 +1209,228 @@ const batchTranscription = async () => {
     
     if (res.data.code === 200) {
       ElMessage.success('转写任务已启动');
-      // 刷新表格数据
-      getTaskDetail1();
+      
+      // 开始检查处理状态
+      setTimeout(checkBatchProcessingStatus, 3000);
     } else {
+      // 处理失败，关闭弹窗
+      isBatchProcessing.value = false;
+      batchProcessingVisible.value = false;
       ElMessage.error(res.data.msg || '启动转写失败');
     }
   } catch (error) {
     console.error('启动转写失败:', error);
+    isBatchProcessing.value = false;
+    batchProcessingVisible.value = false;
     ElMessage.error('启动转写失败，请稍后重试');
+  }
+};
+
+// 开始批量处理进度模拟
+const startBatchProcessingSimulation = () => {
+  let progress = 0;
+  
+  batchProcessingTimer = setInterval(() => {
+    // 进度增长但不会到达100%，最高到95%
+    progress += Math.random() * 2 + 0.5; // 随机增加0.5-2.5%
+    
+    // 限制最高到95%，留给真实状态检查来完成
+    if (progress > 95) {
+      progress = 95;
+    }
+    
+    // 更新步骤状态
+    if (progress < 20) {
+      batchCurrentStep.value = 1;
+      batchCurrentStatus.value = '排队等待中';
+      batchEstimatedTime.value = '约3-5分钟';
+    } else if (progress < 80) {
+      batchCurrentStep.value = 2;
+      batchCurrentStatus.value = '正在转写中';
+      batchEstimatedTime.value = '约1-3分钟';
+    } else {
+      batchCurrentStep.value = 3;
+      batchCurrentStatus.value = '即将完成';
+      batchEstimatedTime.value = '不到1分钟';
+    }
+    
+    batchProcessingProgress.value = Math.floor(progress);
+  }, 1200); // 每1.2秒更新一次
+};
+
+// 检查批量处理状态
+const checkBatchProcessingStatus = async () => {
+  try {
+    // 获取文件详情信息
+    const res = await getTaskDetail(id.value, 1, 1000, {}); // 获取所有文件
+    if (res.data.code === 200) {
+      const allFiles = res.data.data.list;
+      let hasChanges = false;
+      let completedCount = 0;
+      
+      // 检查每个处理中的文件状态
+      batchProcessingFiles.value.forEach(processingFile => {
+        const currentFile = allFiles.find(f => f.id === processingFile.id);
+        if (currentFile) {
+          // 对比update_time和step来判断状态变化
+          const timeChanged = new Date(currentFile.update_time) > new Date(processingFile.initialUpdateTime);
+          const stepChanged = currentFile.step !== processingFile.initialStep;
+          
+          console.log(`文件 ${processingFile.filename} 状态检查:`, {
+            timeChanged,
+            stepChanged,
+            currentStep: currentFile.step,
+            initialStep: processingFile.initialStep,
+            currentTime: currentFile.update_time,
+            initialTime: processingFile.initialUpdateTime
+          });
+          
+          if (timeChanged || stepChanged) {
+            hasChanges = true;
+            
+            // 根据step状态判断文件处理状态
+            if (currentFile.step >= 8) { // 8表示所有处理完成
+              processingFile.currentStatus = 'completed';
+              completedCount++;
+            } else if (currentFile.step >= 7) { // 7表示正在文本转写
+              processingFile.currentStatus = 'processing';
+            } else {
+              processingFile.currentStatus = 'waiting';
+            }
+            
+            // 更新初始状态，避免重复检测
+            processingFile.initialStep = currentFile.step;
+            processingFile.initialUpdateTime = currentFile.update_time;
+          } else {
+            // 没有变化的文件，根据当前状态计数
+            if (processingFile.currentStatus === 'completed') {
+              completedCount++;
+            }
+          }
+        }
+      });
+      
+      // 更新整体进度
+      const totalFiles = batchProcessingFiles.value.length;
+      const progress = Math.floor((completedCount / totalFiles) * 100);
+      
+      // 如果有真实进度，停止模拟进度
+      if (hasChanges && batchProcessingTimer) {
+        clearInterval(batchProcessingTimer);
+        batchProcessingTimer = null;
+        batchProcessingProgress.value = progress;
+      }
+      
+      // 检查是否全部完成
+      if (completedCount === totalFiles) {
+        // 全部处理完成
+        isBatchProcessing.value = false;
+        batchProcessComplete.value = true;
+        batchProcessingProgress.value = 100;
+        batchCurrentStep.value = 3;
+        batchCurrentStatus.value = '全部处理完成';
+        
+        // 清理定时器
+        if (batchProcessingTimer) {
+          clearInterval(batchProcessingTimer);
+          batchProcessingTimer = null;
+        }
+        if (batchStatusCheckTimer) {
+          clearTimeout(batchStatusCheckTimer);
+          batchStatusCheckTimer = null;
+        }
+        
+        ElMessage.success(`批量转写处理已完成！共完成 ${completedCount} 个文件`);
+        
+        // 更新任务统计信息
+        const statsRes = await getTaskStatistics(id.value);
+        if (statsRes.data.code === 200) {
+          fileINfo.value = statsRes.data.data;
+        }
+      } else {
+        // 仍在处理中，继续检查
+        if (isBatchProcessing.value) {
+          batchStatusCheckTimer = setTimeout(checkBatchProcessingStatus, 3000); // 3秒后再次检查
+        }
+      }
+    }
+  } catch (error) {
+    console.error('检查批量处理状态失败:', error);
+    // 出错时也继续检查
+    if (isBatchProcessing.value) {
+      batchStatusCheckTimer = setTimeout(checkBatchProcessingStatus, 5000); // 5秒后重试
+    }
+  }
+};
+
+// 处理弹窗关闭
+const handleBatchDialogClose = () => {
+  // 清理定时器
+  if (batchProcessingTimer) {
+    clearInterval(batchProcessingTimer);
+    batchProcessingTimer = null;
+  }
+  if (batchStatusCheckTimer) {
+    clearTimeout(batchStatusCheckTimer);
+    batchStatusCheckTimer = null;
+  }
+  
+  // 重置状态
+  isBatchProcessing.value = false;
+  batchProcessComplete.value = false;
+};
+
+// 关闭批量处理弹窗
+const closeBatchProcessingDialog = () => {
+  handleBatchDialogClose();
+  batchProcessingVisible.value = false;
+  
+  // 刷新表格数据
+  getTaskDetail1();
+};
+
+// 获取文件状态样式类
+const getFileStatusClass = (status) => {
+  switch (status) {
+    case 'waiting': return 'file-waiting';
+    case 'processing': return 'file-processing';
+    case 'completed': return 'file-completed';
+    default: return '';
+  }
+};
+
+// 获取文件标签类型
+const getFileTagType = (status) => {
+  switch (status) {
+    case 'waiting': return 'info';
+    case 'processing': return 'warning';
+    case 'completed': return 'success';
+    default: return 'info';
+  }
+};
+
+// 获取文件状态文本
+const getFileStatusText = (status) => {
+  switch (status) {
+    case 'waiting': return '等待处理';
+    case 'processing': return '正在转写';
+    case 'completed': return '已完成';
+    default: return '未知状态';
+  }
+};
+
+// 刷新任务数据
+const refreshTaskData = async () => {
+  try {
+    const res = await getTaskStatistics(id.value);
+    if (res.data.code === 200) {
+      fileINfo.value = res.data.data;
+      ElMessage.success('任务数据已刷新');
+    }
+    getTaskDetail1(); // 刷新表格
+  } catch (error) {
+    console.error('刷新任务数据失败:', error);
+    ElMessage.error('刷新失败');
   }
 };
 
@@ -1548,5 +1999,296 @@ const getTaskStatusClass = (status) => {
 
 .task-details {
   margin-top: 20px;
+}
+
+/* 批量处理弹窗样式 */
+.batch-processing-status,
+.batch-process-complete {
+  .processing-card {
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #e4e7ed;
+  }
+
+  .card-header {
+    padding: 20px 24px;
+    background: linear-gradient(135deg, #409eff, #67c23a);
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    &.processing {
+      background: linear-gradient(135deg, #e6a23c, #f56c6c);
+    }
+
+    &.success {
+      background: linear-gradient(135deg, #67c23a, #5cb87a);
+    }
+
+    .header-icon {
+      font-size: 24px;
+
+      &.rotating {
+        animation: rotating 2s linear infinite;
+      }
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+  }
+
+  .card-content {
+    padding: 24px;
+  }
+
+  .status-info {
+    margin-bottom: 24px;
+  }
+
+  .status-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+    
+    .label {
+      color: #909399;
+      margin-right: 12px;
+      min-width: 80px;
+    }
+
+    .filename {
+      color: #409eff;
+      font-weight: 500;
+    }
+
+    .time {
+      color: #67c23a;
+      font-weight: 500;
+    }
+  }
+
+  .progress-section {
+    margin-bottom: 32px;
+  }
+
+  .progress-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    
+    span {
+      font-weight: 500;
+      color: #303133;
+    }
+  }
+
+  .steps-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+    padding: 20px 0;
+  }
+
+  .step-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+    
+    .step-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #f5f7fa;
+      border: 2px solid #e4e7ed;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #c0c4cc;
+      font-weight: 600;
+      font-size: 14px;
+      margin-bottom: 8px;
+      transition: all 0.3s ease;
+    }
+
+    .step-text {
+      font-size: 14px;
+      color: #909399;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    &.active {
+      .step-icon {
+        background: #409eff;
+        border-color: #409eff;
+        color: white;
+        
+        .el-icon {
+          font-size: 16px;
+          animation: rotating 2s linear infinite;
+        }
+      }
+
+      .step-text {
+        color: #409eff;
+        font-weight: 500;
+      }
+    }
+
+    &.completed {
+      .step-icon {
+        background: #67c23a;
+        border-color: #67c23a;
+        color: white;
+      }
+
+      .step-text {
+        color: #67c23a;
+        font-weight: 500;
+      }
+    }
+  }
+
+  .step-line {
+    flex: 1;
+    height: 2px;
+    background: #e4e7ed;
+    margin: 0 16px;
+    position: relative;
+    top: -18px;
+    transition: all 0.3s ease;
+
+    &.completed {
+      background: #67c23a;
+    }
+  }
+
+  .processing-tips {
+    margin-top: 20px;
+
+    :deep(.el-alert__content) {
+      p {
+        margin: 4px 0;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+    }
+  }
+
+  .success-message {
+    color: #606266;
+    margin-bottom: 20px;
+    line-height: 1.6;
+    text-align: center;
+  }
+
+  .action-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+  }
+
+  // 文件列表相关样式
+  .file-list-section,
+  .completed-files {
+    margin: 20px 0;
+    
+    h4 {
+      margin: 0 0 12px 0;
+      color: #303133;
+      font-size: 16px;
+      font-weight: 600;
+    }
+  }
+
+  .file-list {
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    background: #fafafa;
+  }
+
+  .file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e4e7ed;
+    transition: all 0.3s ease;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &.file-waiting {
+      background: #f8f9fa;
+    }
+
+    &.file-processing {
+      background: #fff7e6;
+      border-left: 3px solid #e6a23c;
+    }
+
+    &.file-completed,
+    &.completed {
+      background: #f0f9ff;
+      border-left: 3px solid #67c23a;
+    }
+
+    .file-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+
+      .file-icon {
+        color: #909399;
+        font-size: 16px;
+      }
+
+      .file-name {
+        color: #303133;
+        font-size: 14px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .file-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
+      .loading-icon {
+        color: #e6a23c;
+        animation: rotating 2s linear infinite;
+        font-size: 14px;
+      }
+
+      .success-icon {
+        color: #67c23a;
+        font-size: 14px;
+      }
+    }
+  }
+}
+
+@keyframes rotating {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

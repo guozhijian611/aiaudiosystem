@@ -578,7 +578,9 @@ class TaskController
             'valid' => $valid, // 有效文件数
             // 'valid_duration' => $valid_duration, // 有效时长(秒)
             'transcribed' => $transcribed, // 已转写文件数
-            'cleared' => $cleared // 已降噪文件数量
+            'cleared' => $cleared, // 已降噪文件数量
+            'create_time' => $task->create_time, // 创建时间
+            'update_time' => $task->update_time // 更新时间
         ]);
     }
 
