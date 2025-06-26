@@ -220,7 +220,7 @@
       </el-tab-pane>
     </el-tabs>
     <el-button v-for="button in buttons" :key="button.text" :type="button.type" class="returnBtn" text
-      @click="handleReturnToTaskOperation">
+      @click="router.push({ path: 'task-operation', query: { index: 4, id: taskId } })">
       {{ button.text }}
     </el-button>
   </div>
@@ -1123,51 +1123,6 @@ const downloadClearFile = () => {
     console.error('下载降噪文件失败:', error);
     ElMessage.error('下载失败');
   }
-};
-
-const handleReturnToTaskOperation = () => {
-  // 清理事件监听
-  if (videoRef.value) {
-    videoRef.value.removeEventListener('play', () => {});
-    videoRef.value.removeEventListener('pause', () => {});
-    videoRef.value.removeEventListener('timeupdate', () => {});
-    videoRef.value.removeEventListener('seeked', () => {});
-  }
-
-  if (audioRef.value) {
-    audioRef.value.removeEventListener('play', () => {});
-    audioRef.value.removeEventListener('pause', () => {});
-    audioRef.value.removeEventListener('timeupdate', () => {});
-    audioRef.value.removeEventListener('seeked', () => {});
-  }
-
-  if (videoRef1.value) {
-    videoRef1.value.removeEventListener('play', () => {});
-    videoRef1.value.removeEventListener('pause', () => {});
-    videoRef1.value.removeEventListener('timeupdate', () => {});
-    videoRef1.value.removeEventListener('seeked', () => {});
-  }
-
-  if (audioRef1.value) {
-    audioRef1.value.removeEventListener('play', () => {});
-    audioRef1.value.removeEventListener('pause', () => {});
-    audioRef1.value.removeEventListener('timeupdate', () => {});
-    audioRef1.value.removeEventListener('seeked', () => {});
-  }
-
-  // 清理 WaveSurfer
-  if (wavesurfer.value) {
-    wavesurfer.value.destroy();
-    wavesurfer.value = null;
-  }
-
-  if (wavesurfer1.value) {
-    wavesurfer1.value.destroy();
-    wavesurfer1.value = null;
-  }
-
-  // 返回任务操作页面
-  router.push({ path: 'task-operation', query: { index: 4, id: taskId.value } });
 };
 </script>
 

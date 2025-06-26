@@ -40,6 +40,14 @@ const activePath = ref(route.fullPath);
 const tabs = useTabsStore();
 // 设置标签
 const setTags = (route: any) => {
+    // 不创建标签的页面列表
+    const noTabPages = ['/task-operation', '/file-view', '/manage-users'];
+    
+    // 如果当前路由在不创建标签的列表中，直接返回
+    if (noTabPages.includes(route.path)) {
+        return;
+    }
+    
     const isExist = tabs.list.some((item) => {
         return item.path === route.fullPath;
     });

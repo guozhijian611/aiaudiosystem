@@ -28,8 +28,8 @@ import { useRoute } from 'vue-router'
 
 const route = useRoute()
 
-// 当路径不是 /task-operation和/file-view 时显示 tabs
-const hiddenPaths = ['/task-operation', '/file-view'];
+// 当路径不是 /task-operation、/file-view 和 /manage-users 时显示 tabs
+const hiddenPaths = ['/task-operation', '/file-view', '/manage-users'];
 
 const showTabs = computed(() => !hiddenPaths.includes(route.path));
 const sidebar = useSidebarStore();
