@@ -341,36 +341,59 @@ class WhisperDiarizationTranscriber:
             
             # 3. 强制对齐
             logger.info("开始强制对齐...")
-            alignment_model, alignment_tokenizer = load_alignment_model(
-                self.device,
-                dtype=torch.float16 if self.device == "cuda" else torch.float32,
-            )
-            
-            emissions, stride = generate_emissions(
-                alignment_model,
-                torch.from_numpy(audio_waveform)
-                .to(alignment_model.dtype)
-                .to(alignment_model.device),
-                batch_size=self.config.WHISPER_BATCH_SIZE,
-            )
-            
-            del alignment_model
-            torch.cuda.empty_cache()
-            
-            tokens_starred, text_starred = preprocess_text(
-                full_transcript,
-                romanize=True,
-                language=langs_to_iso.get(info.language, info.language),
-            )
-            
-            segments, scores, blank_token = get_alignments(
-                emissions,
-                tokens_starred,
-                alignment_tokenizer,
-            )
-            
-            spans = get_spans(tokens_starred, segments, blank_token)
-            word_timestamps = postprocess_results(text_starred, spans, stride, scores)
+            try:
+                alignment_model, alignment_tokenizer = load_alignment_model(
+                    self.device,
+                    dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                )
+                
+                emissions, stride = generate_emissions(
+                    alignment_model,
+                    torch.from_numpy(audio_waveform)
+                    .to(alignment_model.dtype)
+                    .to(alignment_model.device),
+                    batch_size=self.config.WHISPER_BATCH_SIZE,
+                )
+                
+                del alignment_model
+                torch.cuda.empty_cache()
+                
+                tokens_starred, text_starred = preprocess_text(
+                    full_transcript,
+                    romanize=False,  # 对中文不使用罗马化
+                    language=langs_to_iso.get(info.language, info.language),
+                )
+                
+                segments, scores, blank_token = get_alignments(
+                    emissions,
+                    tokens_starred,
+                    alignment_tokenizer,
+                )
+                
+                spans = get_spans(tokens_starred, segments, blank_token)
+                word_timestamps = postprocess_results(text_starred, spans, stride, scores)
+                
+                logger.info("强制对齐完成")
+                
+            except Exception as e:
+                logger.warning(f"强制对齐失败，使用 Whisper 原始时间戳: {e}")
+                # 使用 Whisper 的原始段落时间戳
+                word_timestamps = []
+                for segment in transcript_segments:
+                    # 简单地将段落拆分为词
+                    words = segment.text.strip().split()
+                    if words:
+                        segment_duration = segment.end - segment.start
+                        word_duration = segment_duration / len(words)
+                        
+                        for i, word in enumerate(words):
+                            word_start = segment.start + i * word_duration
+                            word_end = word_start + word_duration
+                            word_timestamps.append({
+                                'text': word,
+                                'start': word_start,
+                                'end': word_end
+                            })
             
             # 4. 说话人分离
             logger.info("开始说话人分离...")
