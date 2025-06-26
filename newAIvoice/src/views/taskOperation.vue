@@ -228,8 +228,8 @@
         
         <div class="fileBox4">
           <TableSearch :query="query" :options="searchOpt" :search="handleSearch" />
-          <el-table :data="tableData" border style="width: 100%" @selection-change="handleSelectionChange">
-            <el-table-column type="selection" align="center" width="55" />
+          <el-table :data="tableData" border style="width: 100%" @selection-change="handleSelectionChange" :row-class-name="getRowClassName">
+            <el-table-column type="selection" align="center" width="55" :selectable="isRowSelectable" />
           
             <el-table-column label="文件名称" align="center" prop="filename" />
             <el-table-column label="大小" align="center" prop="size" />
@@ -237,7 +237,18 @@
             <el-table-column label="有效时长" align="center" prop="effective_voice" />
             <el-table-column label="语种" align="center" prop="language" />
             <el-table-column label="上传时间" align="center" prop="create_time" />
-            <el-table-column label="处理状态" align="center" prop="step" />
+            <el-table-column label="处理状态" align="center" prop="step" width="180" show-overflow-tooltip>
+              <template #default="scope">
+                <el-tag 
+                  :type="scope.row.step === '所有处理完成' ? 'success' : 'info'"
+                  :effect="scope.row.step === '所有处理完成' ? 'dark' : 'light'"
+                  style="white-space: normal; height: auto; line-height: 1.4; padding: 4px 8px;"
+                >
+                  {{ scope.row.step }}
+                  <span v-if="scope.row.step === '所有处理完成'" style="margin-left: 4px;">✓</span>
+                </el-tag>
+              </template>
+            </el-table-column>
 
             <el-table-column label="操作" align="center" width="500">
               <!-- 你可以在这里放操作按钮 -->
@@ -370,6 +381,12 @@
                     </el-tag>
                     <el-icon v-if="file.currentStatus === 'processing'" class="loading-icon"><Loading /></el-icon>
                     <el-icon v-else-if="file.currentStatus === 'completed'" class="success-icon"><CircleCheck /></el-icon>
+                    <el-icon v-else-if="file.currentStatus === 'failed'" class="error-icon"><InfoFilled /></el-icon>
+                  </div>
+                  <!-- 显示跳过原因 -->
+                  <div v-if="file.currentStatus === 'failed' && file.errorMessage" class="skip-reason">
+                    <span class="reason-label">跳过原因：</span>
+                    <span class="reason-text">{{ file.errorMessage }}</span>
                   </div>
                 </div>
               </div>
@@ -447,8 +464,19 @@
                     <span class="file-name">{{ file.filename }}</span>
                   </div>
                   <div class="file-status">
-                    <el-tag type="success" size="small">已完成</el-tag>
-                    <el-icon class="success-icon"><CircleCheck /></el-icon>
+                    <el-tag 
+                      :type="file.currentStatus === 'failed' ? 'warning' : 'success'" 
+                      size="small"
+                    >
+                      {{ file.currentStatus === 'failed' ? '已跳过' : '已完成' }}
+                    </el-tag>
+                    <el-icon v-if="file.currentStatus === 'failed'" class="warning-icon"><InfoFilled /></el-icon>
+                    <el-icon v-else class="success-icon"><CircleCheck /></el-icon>
+                  </div>
+                  <!-- 显示跳过原因 -->
+                  <div v-if="file.currentStatus === 'failed' && file.errorMessage" class="skip-reason">
+                    <span class="reason-label">跳过原因：</span>
+                    <span class="reason-text">{{ file.errorMessage }}</span>
                   </div>
                 </div>
               </div>
@@ -477,7 +505,7 @@
 <script lang="ts" setup>
 import { ref, computed, reactive, nextTick, onMounted, watch, onActivated, onUnmounted } from "vue";
 import type { TabsPaneContext } from "element-plus";
-import { ArrowDown, Document, CirclePlus, SuccessFilled, CircleClose, DocumentAdd, Loading, EditPen, View, Download, Search, MuteNotification, Check, CircleCheck } from "@element-plus/icons-vue";
+import { ArrowDown, Document, CirclePlus, SuccessFilled, CircleClose, DocumentAdd, Loading, EditPen, View, Download, Search, MuteNotification, Check, CircleCheck, InfoFilled } from "@element-plus/icons-vue";
 import TableSearch from "@/components/operation-search.vue";
 import { useRouter, useRoute } from "vue-router";
 import { getTaskDetail, uploadTask, workflow,getFileProgress,getFileTranscriptionProgress,getTaskStatistics } from "@/api/task";
@@ -674,7 +702,7 @@ const stepStatusMap = {
   1: '正在提取音频',
   2: '音频提取完成，等待降噪',
   3: '正在音频降噪',
-  4: '音频降噪完成，等待下一步处理',
+  4: '音频降噪完成，等待转写',
   5: '正在快速识别',
   6: '快速识别完成，等待用户选择是否转写',
   7: '正在文本转写',
@@ -857,7 +885,7 @@ const searchOpt = ref([
       { label: "正在提取音频", value: "正在提取音频" },
       { label: "音频提取完成，等待降噪", value: "音频提取完成，等待降噪" },
       { label: "正在音频降噪", value: "正在音频降噪" },
-      { label: "音频降噪完成，等待下一步处理", value: "音频降噪完成，等待下一步处理" },
+      { label: "音频降噪完成，等待转写", value: "音频降噪完成，等待转写" },
       { label: "正在快速识别", value: "正在快速识别" },
       { label: "快速识别完成，等待用户选择是否转写", value: "快速识别完成，等待用户选择是否转写" },
       { label: "正在文本转写", value: "正在文本转写" },
@@ -917,6 +945,9 @@ const handleClick = (tab: TabsPaneContext, event: Event) => {
     
     if (tab.props.name === "fourth") {
       getTaskDetail1();
+    } else if (tab.props.name === "fifth") {
+      // 切换到统计信息页面时重新获取数据
+      refreshTaskStatistics();
     }
   });
 };
@@ -946,11 +977,26 @@ const handleClick4 = (tab: TabsPaneContext, event: Event) => {
   });
 };
 
-const handleClick5 = (tab: TabsPaneContext, event: Event) => {
+const handleClick5 = async (tab: TabsPaneContext, event: Event) => {
   nextTick(() => {
     (document.activeElement as HTMLElement | null)?.blur?.();
-    // console.log(tab, event);
   });
+  
+  // 每次切换统计信息的子标签页时重新获取数据
+  try {
+    const res = await getTaskStatistics(id.value);
+    if (res.data.code === 200) {
+      fileINfo.value = res.data.data;
+      console.log('重新获取任务统计信息：', fileINfo.value);
+    } else if (res.data.code === 401) {
+      router.push("/login");
+    } else {
+      ElMessage.error(res.data.msg || "获取任务统计失败");
+    }
+  } catch (error) {
+    console.error("获取任务统计失败:", error);
+    ElMessage.error("获取任务统计失败，请稍后重试");
+  }
 };
 const buttons = [{ type: "primary", text: "⬅ 返回任务管理" }] as const;
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -1142,10 +1188,37 @@ const handleSelectionChange = (selection: any[]) => {
   console.log('当前选中的文件：', selection);
 };
 
+// 控制行是否可选择
+const isRowSelectable = (row: any, index: number) => {
+  // step为8或"所有处理完成"的文件不能选择
+  return !(row.step === 8 || row.step === '所有处理完成');
+};
+
+// 获取行样式类名
+const getRowClassName = ({ row, rowIndex }: { row: any, rowIndex: number }) => {
+  // 为已完成的文件添加特殊样式
+  if (row.step === 8 || row.step === '所有处理完成') {
+    return 'completed-row';
+  }
+  return '';
+};
+
 // 批量转写函数
 const batchTranscription = async () => {
   if (selectedFiles.value.length === 0) {
     ElMessage.warning('请先选择要转写的文件');
+    return;
+  }
+
+  // 检查选中文件中是否有"所有处理完成"的文件
+  const completedFiles = selectedFiles.value.filter(file => {
+    // step为8表示"所有处理完成"，或者step文本为"所有处理完成"
+    return file.step === 8 || file.step === '所有处理完成';
+  });
+
+  if (completedFiles.length > 0) {
+    const completedFileNames = completedFiles.map(file => file.filename).join('、');
+    ElMessage.warning(`以下文件已完成所有处理，无需重复转写：${completedFileNames}`);
     return;
   }
 
@@ -1181,9 +1254,10 @@ const batchTranscription = async () => {
       return {
         id: file.id,
         filename: file.filename,
-        currentStatus: 'waiting', // waiting, processing, completed
+        currentStatus: 'waiting', // waiting, processing, completed, failed
         initialStep: numericStep,
-        initialUpdateTime: file.update_time || new Date().toISOString()
+        initialUpdateTime: file.update_time || new Date().toISOString(),
+        errorMessage: '' // 存储错误信息
       };
     });
 
@@ -1208,12 +1282,47 @@ const batchTranscription = async () => {
     console.log('转写接口返回数据：', res);
     
     if (res.data.code === 200) {
-      ElMessage.success('转写任务已启动');
+      const results = res.data.data.results || [];
+      const stat = res.data.data.stat || {};
       
-      // 开始检查处理状态
-      setTimeout(checkBatchProcessingStatus, 3000);
+      console.log('解析的results:', results);
+      console.log('解析的stat:', stat);
+      
+      // 更新文件状态，标记推送失败的文件
+      batchProcessingFiles.value.forEach(file => {
+        const result = results.find(r => r.id === file.id);
+        if (result) {
+          if (result.status === 'failed') {
+            file.currentStatus = 'failed';
+            file.errorMessage = result.msg;
+          } else if (result.status === 'success') {
+            file.currentStatus = 'waiting';
+          }
+        }
+      });
+      
+      // 检查是否有推送成功的文件
+      const successCount = stat.success || 0;
+      const failedCount = stat.failed || 0;
+      
+      if (successCount === 0 && failedCount > 0) {
+        // 全部推送失败 - 显示为处理完成状态，因为已经有了明确的结果
+        isBatchProcessing.value = false;
+        batchProcessComplete.value = true;
+        ElMessage.warning(`批量转写完成，共${failedCount}个文件因不符合条件而跳过`);
+      } else if (failedCount > 0) {
+        // 部分推送失败
+        ElMessage.warning(`${successCount}个文件推送成功，${failedCount}个文件跳过处理`);
+        // 继续检查处理状态
+        setTimeout(checkBatchProcessingStatus, 3000);
+      } else {
+        // 全部推送成功
+        ElMessage.success('转写任务已启动');
+        // 开始检查处理状态
+        setTimeout(checkBatchProcessingStatus, 3000);
+      }
     } else {
-      // 处理失败，关闭弹窗
+      // 接口调用失败，关闭弹窗
       isBatchProcessing.value = false;
       batchProcessingVisible.value = false;
       ElMessage.error(res.data.msg || '启动转写失败');
@@ -1395,6 +1504,7 @@ const getFileStatusClass = (status) => {
     case 'waiting': return 'file-waiting';
     case 'processing': return 'file-processing';
     case 'completed': return 'file-completed';
+    case 'failed': return 'file-failed';
     default: return '';
   }
 };
@@ -1405,6 +1515,7 @@ const getFileTagType = (status) => {
     case 'waiting': return 'info';
     case 'processing': return 'warning';
     case 'completed': return 'success';
+    case 'failed': return 'danger';
     default: return 'info';
   }
 };
@@ -1415,6 +1526,7 @@ const getFileStatusText = (status) => {
     case 'waiting': return '等待处理';
     case 'processing': return '正在转写';
     case 'completed': return '已完成';
+    case 'failed': return '跳过处理';
     default: return '未知状态';
   }
 };
@@ -1431,6 +1543,24 @@ const refreshTaskData = async () => {
   } catch (error) {
     console.error('刷新任务数据失败:', error);
     ElMessage.error('刷新失败');
+  }
+};
+
+// 刷新任务统计信息
+const refreshTaskStatistics = async () => {
+  try {
+    const res = await getTaskStatistics(id.value);
+    if (res.data.code === 200) {
+      fileINfo.value = res.data.data;
+      console.log('刷新任务统计信息：', fileINfo.value);
+    } else if (res.data.code === 401) {
+      router.push("/login");
+    } else {
+      ElMessage.error(res.data.msg || "获取任务统计失败");
+    }
+  } catch (error) {
+    console.error("获取任务统计失败:", error);
+    ElMessage.error("获取任务统计失败，请稍后重试");
   }
 };
 
@@ -2244,6 +2374,11 @@ const getTaskStatusClass = (status) => {
       border-left: 3px solid #67c23a;
     }
 
+    &.file-failed {
+      background: #fef0f0;
+      border-left: 3px solid #f56c6c;
+    }
+
     .file-info {
       display: flex;
       align-items: center;
@@ -2279,6 +2414,36 @@ const getTaskStatusClass = (status) => {
         color: #67c23a;
         font-size: 14px;
       }
+
+      .error-icon {
+        color: #e6a23c;
+        font-size: 14px;
+      }
+
+      .warning-icon {
+        color: #e6a23c;
+        font-size: 14px;
+      }
+    }
+
+    .skip-reason {
+      margin-top: 6px;
+      padding: 6px 8px;
+      background: #fdf6ec;
+      border: 1px solid #f5dab1;
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.4;
+      
+      .reason-label {
+        color: #e6a23c;
+        font-weight: 500;
+      }
+      
+      .reason-text {
+        color: #606266;
+        word-break: break-word;
+      }
     }
   }
 }
@@ -2289,6 +2454,14 @@ const getTaskStatusClass = (status) => {
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* 已完成行的样式 - 简化版本，只处理勾选框 */
+:deep(.completed-row) {
+  .el-checkbox {
+    pointer-events: none;
+    opacity: 0.5;
   }
 }
 </style>
