@@ -1133,9 +1133,21 @@ const getTaskDetail1 = async () => {
 // 监听路由参数变化
 watch(
   () => route.query,
-  (newQuery) => {
+  async (newQuery) => {
     if (newQuery.id) {
       id.value = newQuery.id as string;
+      
+      // 获取任务基本信息
+      try {
+        const taskRes = await getTaskDetail(id.value, 1, 1, {});
+        if (taskRes.data.code === 200 && taskRes.data.data.task_info) {
+          taskInfo.value = taskRes.data.data.task_info;
+          console.log('路由变化-获取任务基本信息：', taskInfo.value);
+        }
+      } catch (error) {
+        console.error("路由变化-获取任务基本信息失败:", error);
+      }
+      
       if (newQuery.index === "4") {
         activeName.value = "fourth";
         getTaskDetail1();
@@ -1156,7 +1168,20 @@ watch(
 );
 
 // 组件被激活时重新获取数据
-onActivated(() => {
+onActivated(async () => {
+  // 获取任务基本信息
+  if (id.value) {
+    try {
+      const taskRes = await getTaskDetail(id.value, 1, 1, {});
+      if (taskRes.data.code === 200 && taskRes.data.data.task_info) {
+        taskInfo.value = taskRes.data.data.task_info;
+        console.log('组件激活-获取任务基本信息：', taskInfo.value);
+      }
+    } catch (error) {
+      console.error("组件激活-获取任务基本信息失败:", error);
+    }
+  }
+  
   if (activeName.value === "fourth") {
     getTaskDetail1();
   }
@@ -1167,9 +1192,23 @@ onMounted(async() => {
   id.value = route.query.id as string;
   console.log("查询参数 index:", index);
   console.log("查询参数 id:", id.value);
+  
+  // 获取任务统计信息
   const res = await getTaskStatistics(id.value);
   console.log(1499,res);
   fileINfo.value = res.data.data;
+  
+  // 获取任务基本信息（包含任务名称等）
+  try {
+    const taskRes = await getTaskDetail(id.value, 1, 1, {});
+    if (taskRes.data.code === 200 && taskRes.data.data.task_info) {
+      taskInfo.value = taskRes.data.data.task_info;
+      console.log('获取任务基本信息：', taskInfo.value);
+    }
+  } catch (error) {
+    console.error("获取任务基本信息失败:", error);
+  }
+  
   if (index == "1") {
     activeName.value = "first";
   } else if (index == "2") {
