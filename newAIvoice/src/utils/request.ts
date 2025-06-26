@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosError, AxiosResponse, InternalAxiosRequestCo
 import router from '../router';
 
 const service: AxiosInstance = axios.create({
-  baseURL: 'http://10.0.0.130:8787',
+  baseURL: 'http://127.0.0.1:8787',
   timeout: 60000,
 });
 

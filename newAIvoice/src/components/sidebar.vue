@@ -61,12 +61,19 @@ import { getMenuData } from '@/components/menu';
 const route = useRoute();
 const router = useRouter();
 
-const onRoutes = ref(route.path);
-const menuData = computed(() => getMenuData());
-
-watch(() => route.path, (newPath) => {
-    onRoutes.value = newPath;
+// 创建一个计算属性来确定当前活跃的菜单项
+const onRoutes = computed(() => {
+    const currentPath = route.path;
+    
+    // 如果是任务操作或文件查看页面，应该高亮"后处理任务"菜单
+    if (currentPath === '/task-operation' || currentPath === '/file-view') {
+        return '/task-management';
+    }
+    
+    return currentPath;
 });
+
+const menuData = computed(() => getMenuData());
 
 const sidebar = useSidebarStore();
 </script>
