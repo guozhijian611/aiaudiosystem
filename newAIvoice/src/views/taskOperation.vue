@@ -100,9 +100,109 @@
           </div>
         </div>
       </el-tab-pane>
+      <el-tab-pane label="统计信息" name="fifth">
+        <el-tabs v-model="activeName5" class="demo-tabs5" @tab-click="handleClick5">
+          <el-tab-pane label="任务概览" name="first5">
+            <!-- 任务信息卡片 -->
+            <div class="task-info-cards">
+              <el-card class="info-card" shadow="hover">
+                <div class="card-header-custom">
+                  <el-icon><Document /></el-icon>
+                  <span>文件统计</span>
+                </div>
+                <div class="card-content-custom">
+                  <div class="stat-item">
+                    <span class="stat-label">总文件数：</span>
+                    <span class="stat-value primary">{{ fileINfo.total }}个</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">有效文件数：</span>
+                    <span class="stat-value success">{{ fileINfo.valid }}个</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">已转写文件：</span>
+                    <span class="stat-value info">{{ fileINfo.transcribed }}个</span>
+                  </div>
+                  <div class="stat-item">
+                    <span class="stat-label">已降噪文件：</span>
+                    <span class="stat-value warning">{{ fileINfo.cleared }}个</span>
+                  </div>
+                </div>
+              </el-card>
+
+              <el-card class="info-card" shadow="hover">
+                <div class="card-header-custom">
+                  <el-icon><Loading /></el-icon>
+                  <span>处理进度</span>
+                </div>
+                <div class="card-content-custom">
+                  <div class="progress-item">
+                    <span class="progress-label">检测进度：</span>
+                    <el-progress 
+                      :percentage="Math.round((fileINfo.valid / fileINfo.total) * 100) || 0" 
+                      :color="progressColors"
+                      :stroke-width="8"
+                    />
+                  </div>
+                  <div class="progress-item">
+                    <span class="progress-label">转写进度：</span>
+                    <el-progress 
+                      :percentage="Math.round((fileINfo.transcribed / fileINfo.total) * 100) || 0" 
+                      :color="progressColors"
+                      :stroke-width="8"
+                    />
+                  </div>
+                  <div class="progress-item">
+                    <span class="progress-label">降噪进度：</span>
+                    <el-progress 
+                      :percentage="Math.round((fileINfo.cleared / fileINfo.total) * 100) || 0" 
+                      :color="progressColors"
+                      :stroke-width="8"
+                    />
+                  </div>
+                </div>
+              </el-card>
+
+              <el-card class="info-card" shadow="hover">
+                <div class="card-header-custom">
+                  <el-icon><View /></el-icon>
+                  <span>任务状态</span>
+                </div>
+                <div class="card-content-custom">
+                  <div class="status-overview">
+                    <div class="status-circle">
+                      <div class="circle-progress" :style="{ '--progress': ((fileINfo.transcribed / fileINfo.total) * 100) || 0 }">
+                        <span class="percentage">{{ Math.round(((fileINfo.transcribed / fileINfo.total) * 100)) || 0 }}%</span>
+                      </div>
+                      <span class="status-label">总体完成度</span>
+                    </div>
+                  </div>
+                </div>
+              </el-card>
+            </div>
+          </el-tab-pane>
+          
+          <el-tab-pane label="详细信息" name="second5">
+            <!-- 详细信息 -->
+            <div class="task-details">
+              <el-descriptions title="任务详细信息" :column="2" border>
+                <el-descriptions-item label="任务ID">{{ id }}</el-descriptions-item>
+                <el-descriptions-item label="总文件数">{{ fileINfo.total }}个</el-descriptions-item>
+                <el-descriptions-item label="有效文件数">{{ fileINfo.valid }}个</el-descriptions-item>
+                <el-descriptions-item label="已转写文件">{{ fileINfo.transcribed }}个</el-descriptions-item>
+                <el-descriptions-item label="已降噪文件">{{ fileINfo.cleared }}个</el-descriptions-item>
+                <el-descriptions-item label="待处理文件">{{ fileINfo.total - fileINfo.transcribed }}个</el-descriptions-item>
+                <el-descriptions-item label="转写完成率">{{ Math.round(((fileINfo.transcribed / fileINfo.total) * 100)) || 0 }}%</el-descriptions-item>
+                <el-descriptions-item label="降噪完成率">{{ Math.round(((fileINfo.cleared / fileINfo.total) * 100)) || 0 }}%</el-descriptions-item>
+              </el-descriptions>
+            </div>
+          </el-tab-pane>
+        </el-tabs>
+      </el-tab-pane>
+      
       <el-tab-pane label="任务详情" name="fourth">
         <el-tabs v-model="activeName4" class="demo-tabs4" @tab-click="handleClick4">
-          <el-tab-pane label="任务名称" name="first4">
+          <el-tab-pane label="文件列表" name="first4">
             <ul class="taskInfoUl">
               <li>总文件数 {{fileINfo.total}}个</li>
               <li>有效文件数 {{fileINfo.valid}}个</li>
@@ -111,6 +211,7 @@
             </ul>
           </el-tab-pane>
         </el-tabs>
+        
         <div class="fileBox4">
           <TableSearch :query="query" :options="searchOpt" :search="handleSearch" />
           <el-table :data="tableData" border style="width: 100%" @selection-change="handleSelectionChange">
@@ -229,6 +330,15 @@ const transitionFile = ref({
   progress:0
 })
 const uploadStore = useUploadStore();
+
+// 进度条颜色配置
+const progressColors = [
+  { color: '#f56c6c', percentage: 20 },
+  { color: '#e6a23c', percentage: 40 },
+  { color: '#5cb87a', percentage: 60 },
+  { color: '#1989fa', percentage: 80 },
+  { color: '#6f7ad3', percentage: 100 },
+];
 
 // 检查文件是否已存在
 const isFileExists = (fileName) => {
@@ -579,6 +689,7 @@ const activeName1 = ref("first1");
 const activeName2 = ref("first2");
 const activeName3 = ref("first3");
 const activeName4 = ref("first4");
+const activeName5 = ref("first5");
 
 // 修改tab点击处理函数
 const handleClick = (tab: TabsPaneContext, event: Event) => {
@@ -620,6 +731,13 @@ const handleClick4 = (tab: TabsPaneContext, event: Event) => {
   nextTick(() => {
     (document.activeElement as HTMLElement | null)?.blur?.();
     getTaskDetail1()
+    // console.log(tab, event);
+  });
+};
+
+const handleClick5 = (tab: TabsPaneContext, event: Event) => {
+  nextTick(() => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
     // console.log(tab, event);
   });
 };
@@ -968,7 +1086,8 @@ const downloadFile = (content, filename, type) => {
 .demo-tabs1,
 .demo-tabs2,
 .demo-tabs3,
-.demo-tabs4 {
+.demo-tabs4,
+.demo-tabs5 {
   width: 96%;
   margin: 0 auto;
   border: 1px solid #dcdfe6;
@@ -1200,5 +1319,110 @@ const downloadFile = (content, filename, type) => {
     font-size: 14px;
     padding: 20px;
   }
+}
+
+/* 任务信息卡片样式 */
+.task-info-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.info-card {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.card-header-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 16px;
+}
+
+.card-content-custom {
+  .stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    
+    .stat-label {
+      font-size: 14px;
+      color: #666;
+    }
+    
+    .stat-value {
+      font-size: 16px;
+      font-weight: 600;
+      
+      &.primary { color: #409EFF; }
+      &.success { color: #67C23A; }
+      &.info { color: #909399; }
+      &.warning { color: #E6A23C; }
+    }
+  }
+  
+  .progress-item {
+    margin-bottom: 16px;
+    
+    .progress-label {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 8px;
+      display: block;
+    }
+  }
+  
+  .status-overview {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    
+    .status-circle {
+      text-align: center;
+      
+      .circle-progress {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: conic-gradient(#409EFF calc(var(--progress) * 1%), #f0f0f0 0);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        margin: 0 auto 12px;
+        
+        &::before {
+          content: '';
+          width: 80px;
+          height: 80px;
+          background: white;
+          border-radius: 50%;
+          position: absolute;
+        }
+        
+        .percentage {
+          font-size: 24px;
+          font-weight: 600;
+          color: #333;
+          z-index: 1;
+        }
+      }
+      
+      .status-label {
+        font-size: 14px;
+        color: #666;
+      }
+    }
+  }
+}
+
+.task-details {
+  margin-top: 20px;
 }
 </style>

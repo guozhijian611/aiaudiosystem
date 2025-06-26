@@ -86,8 +86,10 @@ class TaskInfoController
             
             // 格式化总大小
             $total_size_formatted = $this->formatBytes($total_size_bytes);
-           
+            $task = Task::where('id', $taskId)->find();
             return jsons(200, '获取任务信息成功', [
+                //任务信息
+                'task_info' => $task,
                 'list' => $result->items(),
                 'total' => $result->total(),
                 'current_page' => $currentPage,
