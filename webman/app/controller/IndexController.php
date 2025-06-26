@@ -23,6 +23,7 @@ class IndexController
     /**
      * 任务状态统计
      * 需要返回共计 1.空任务 2.已检测 3.已转写 4.处理中 5.暂停中
+     * 同时返回所有处理中任务的详细信息
      */
     public function taskStatusCount(Request $request)
     {
@@ -32,13 +33,23 @@ class IndexController
         $task_transcribed = Task::where('uid', $uid)->where('status', 3)->count();
         $task_processing = Task::where('uid', $uid)->where('status', 4)->count();
         $task_paused = Task::where('uid', $uid)->where('status', 5)->count();
+        
+        // 获取所有处理中任务的详细信息
+        $processing_tasks = Task::where('uid', $uid)
+            ->where('status', 4)
+            ->field(['id', 'number', 'name', 'status', 'create_time', 'update_time'])
+            ->order('update_time', 'desc')
+            ->select()
+            ->toArray();
+        
         return jsons(200, 'success', [
             'total' => $task_empty + $task_detected + $task_transcribed + $task_processing + $task_paused,
             'empty' => $task_empty,
             'detected' => $task_detected,
             'transcribed' => $task_transcribed,
             'processing' => $task_processing,
-            'paused' => $task_paused
+            'paused' => $task_paused,
+            'processing_tasks' => $processing_tasks // 新增：处理中任务的详细信息
         ]);
     }
 }

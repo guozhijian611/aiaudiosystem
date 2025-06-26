@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="dashboard-container">
     <div class="home-top">
       <div class="username">{{ username }}</div>
       <div class="welcome">欢迎使用AI语音转写降噪系统!</div>
@@ -21,136 +21,50 @@
         </div>
         <div class="text text2">已完成任务{{ taskStatus.transcribed }}个</div>
       </div>
-      <div class="home-item">
+      <div class="home-item" @click="showProcessingTasks">
         <div class="title title3">
             <Loading style="width: 120px; height: 120px; margin-top: 10px; color: #fff" />
         </div>
         <div class="text text3">执行中任务{{ taskStatus.processing }}个</div>
       </div>
     </div>
-    <!-- <el-row :gutter="20" class="mgb20">
-      <el-col :span="8">
-        <el-card shadow="hover" body-class="card-body">
-          <el-icon class="card-icon bg1">
-            <User />
-          </el-icon>
-          <div class="card-content">
-            <countup class="card-num color1" :end="6666" />
-            <div>用户访问量</div>
+    
+    <!-- 处理中任务弹窗 -->
+    <Teleport to="body">
+      <el-dialog
+        v-model="processingTasksVisible"
+        title="执行中任务"
+        width="600px"
+        :before-close="() => processingTasksVisible = false"
+        append-to-body
+      >
+        <div v-if="taskStatus.processing_tasks && taskStatus.processing_tasks.length > 0">
+          <div 
+            v-for="task in taskStatus.processing_tasks" 
+            :key="task.id"
+            class="processing-task-item"
+            @click="goToTaskOperation(task)"
+          >
+            <div class="task-header">
+              <span class="task-name">{{ task.name }}</span>
+              <span class="task-number">{{ task.number }}</span>
+            </div>
+            <div class="task-info">
+              <span class="task-time">创建时间：{{ formatTime(task.create_time) }}</span>
+              <span class="task-time">更新时间：{{ formatTime(task.update_time) }}</span>
+            </div>
           </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="hover" body-class="card-body">
-          <el-icon class="card-icon bg2">
-            <ChatDotRound />
-          </el-icon>
-          <div class="card-content">
-            <countup class="card-num color2" :end="168" />
-            <div>系统消息</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="hover" body-class="card-body">
-          <el-icon class="card-icon bg3">
-            <Goods />
-          </el-icon>
-          <div class="card-content">
-            <countup class="card-num color3" :end="8888" />
-            <div>商品数量</div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="hover" body-class="card-body">
-          <el-icon class="card-icon bg4">
-            <ShoppingCartFull />
-          </el-icon>
-          <div class="card-content">
-            <countup class="card-num color4" :end="568" />
-            <div>今日订单量</div>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row> -->
-
-    <!-- <el-row :gutter="20" class="mgb20">
-            <el-col :span="18">
-                <el-card shadow="hover">
-                    <div class="card-header">
-                        <p class="card-header-title">订单动态</p>
-                        <p class="card-header-desc">最近一周订单状态，包括订单成交量和订单退货量</p>
-                    </div>
-                    <v-chart class="chart" :option="dashOpt1" />
-                </el-card>
-            </el-col>
-            <el-col :span="6">
-                <el-card shadow="hover">
-                    <div class="card-header">
-                        <p class="card-header-title">品类分布</p>
-                        <p class="card-header-desc">最近一个月销售商品的品类情况</p>
-                    </div>
-                    <v-chart class="chart" :option="dashOpt2" />
-                </el-card>
-            </el-col>
-        </el-row>
-        <el-row :gutter="20">
-            <el-col :span="7">
-                <el-card shadow="hover" :body-style="{ height: '400px' }">
-                    <div class="card-header">
-                        <p class="card-header-title">时间线</p>
-                        <p class="card-header-desc">最新的销售动态和活动信息</p>
-                    </div>
-                    <el-timeline>
-                        <el-timeline-item v-for="(activity, index) in activities" :key="index" :color="activity.color">
-                            <div class="timeline-item">
-                                <div>
-                                    <p>{{ activity.content }}</p>
-                                    <p class="timeline-desc">{{ activity.description }}</p>
-                                </div>
-                                <div class="timeline-time">{{ activity.timestamp }}</div>
-                            </div>
-                        </el-timeline-item>
-                    </el-timeline>
-                </el-card>
-            </el-col>
-            <el-col :span="10">
-                <el-card shadow="hover" :body-style="{ height: '400px' }">
-                    <div class="card-header">
-                        <p class="card-header-title">渠道统计</p>
-                        <p class="card-header-desc">最近一个月的订单来源统计</p>
-                    </div>
-                    <v-chart class="map-chart" :option="mapOptions" />
-                </el-card>
-            </el-col>
-            <el-col :span="7">
-                <el-card shadow="hover" :body-style="{ height: '400px' }">
-                    <div class="card-header">
-                        <p class="card-header-title">排行榜</p>
-                        <p class="card-header-desc">销售商品的热门榜单Top5</p>
-                    </div>
-                    <div>
-                        <div class="rank-item" v-for="(rank, index) in ranks">
-                            <div class="rank-item-avatar">{{ index + 1 }}</div>
-                            <div class="rank-item-content">
-                                <div class="rank-item-top">
-                                    <div class="rank-item-title">{{ rank.title }}</div>
-                                    <div class="rank-item-desc">销量：{{ rank.value }}</div>
-                                </div>
-                                <el-progress
-                                    :show-text="false"
-                                    striped
-                                    :stroke-width="10"
-                                    :percentage="rank.percent"
-                                    :color="rank.color"
-                                />
-                            </div>
-                        </div>
-                    </div>
-                </el-card>
-            </el-col>
-        </el-row> -->
+        </div>
+        <div v-else class="no-tasks">
+          <el-empty description="暂无执行中的任务" />
+        </div>
+        
+        <template #footer>
+          <el-button @click="processingTasksVisible = false">关闭</el-button>
+          <el-button type="primary" @click="goToTaskManagement">查看所有任务</el-button>
+        </template>
+      </el-dialog>
+    </Teleport>
   </div>
 </template>
 
@@ -188,14 +102,50 @@ registerMap("china", chinaMap);
 const username: string | null = localStorage.getItem("vuems_name");
 const taskStatus = ref({
   transcribed: 0,
-  processing: 0
+  processing: 0,
+  processing_tasks: []
 });
+
+// 弹窗相关状态
+const processingTasksVisible = ref(false);
 
 const router = useRouter();
 
 // 跳转到后处理任务页面
 const goToTaskManagement = () => {
+  processingTasksVisible.value = false; // 关闭弹窗
   router.push({ name: 'task-management' });
+};
+
+// 显示处理中任务弹窗
+const showProcessingTasks = () => {
+  if (taskStatus.value.processing > 0) {
+    processingTasksVisible.value = true;
+  }
+};
+
+// 跳转到任务操作页面
+const goToTaskOperation = (task) => {
+  processingTasksVisible.value = false; // 关闭弹窗
+  router.push({ 
+    name: 'task-operation', 
+    query: { 
+      id: task.id,
+      index: '4' // 直接跳转到第4个标签页（任务详情）
+    } 
+  });
+};
+
+// 格式化时间显示
+const formatTime = (timeStr) => {
+  if (!timeStr) return '';
+  return new Date(timeStr).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 };
 
 onMounted(async () => {
@@ -221,6 +171,11 @@ onMounted(async () => {
 }
 </style>
 <style scoped lang="scss">
+.dashboard-container {
+  width: 100%;
+  height: 100%;
+}
+
 .home-top {
   width: 90%;
   margin: 0 auto;
@@ -415,5 +370,73 @@ onMounted(async () => {
 .map-chart {
   width: 100%;
   height: 350px;
+}
+</style>
+
+<style scoped>
+/* 处理中任务弹窗样式 */
+.processing-task-item {
+  padding: 16px;
+  margin-bottom: 12px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.processing-task-item:hover {
+  background: #e3f2fd;
+  border-color: #2196f3;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.15);
+}
+
+.processing-task-item:last-child {
+  margin-bottom: 0;
+}
+
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.task-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.task-number {
+  font-size: 12px;
+  color: #666;
+  background: #e0e0e0;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.task-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.task-time {
+  font-size: 12px;
+  color: #888;
+}
+
+.no-tasks {
+  text-align: center;
+  padding: 40px 0;
+}
+
+/* 执行中任务卡片额外提示 */
+.home-item:hover .text3::after {
+  content: " (点击查看详情)";
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
 }
 </style>
