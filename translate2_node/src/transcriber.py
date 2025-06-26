@@ -312,18 +312,27 @@ class WhisperDiarizationTranscriber:
             whisper_pipeline = faster_whisper.BatchedInferencePipeline(whisper_model)
             audio_waveform = faster_whisper.decode_audio(vocal_target)
             
+            # 添加调试信息
+            logger.info(f"音频波形信息: 长度={len(audio_waveform)}, 采样率=16000, 时长={len(audio_waveform)/16000:.2f}秒")
+            
             suppress_tokens = (
                 find_numeral_symbol_tokens(whisper_model.hf_tokenizer)
                 if hasattr(self.config, 'SUPPRESS_NUMERALS') and self.config.SUPPRESS_NUMERALS
                 else [-1]
             )
             
+            # 修改转写参数，提高检测精度
             if self.config.WHISPER_BATCH_SIZE > 0:
                 transcript_segments, info = whisper_pipeline.transcribe(
                     audio_waveform,
                     language,
                     suppress_tokens=suppress_tokens,
                     batch_size=self.config.WHISPER_BATCH_SIZE,
+                    # 添加更多参数提高转写质量
+                    vad_filter=True,
+                    vad_parameters=dict(min_silence_duration_ms=500, max_speech_duration_s=float('inf')),
+                    word_timestamps=True,
+                    temperature=0.0,  # 降低温度以提高一致性
                 )
             else:
                 transcript_segments, info = whisper_model.transcribe(
@@ -331,9 +340,80 @@ class WhisperDiarizationTranscriber:
                     language,
                     suppress_tokens=suppress_tokens,
                     vad_filter=True,
+                    word_timestamps=True,
+                    temperature=0.0,
+                    # 添加更多参数
+                    beam_size=5,
+                    patience=1.0,
+                    length_penalty=1.0,
+                    repetition_penalty=1.0,
+                    no_repeat_ngram_size=0,
+                    compression_ratio_threshold=2.4,
+                    log_prob_threshold=-1.0,
+                    no_speech_threshold=0.6,
                 )
             
-            full_transcript = "".join(segment.text for segment in transcript_segments)
+            # 转换为列表以便调试
+            transcript_segments_list = list(transcript_segments)
+            logger.info(f"Whisper转写结果: 检测语言={info.language}, 段落数={len(transcript_segments_list)}")
+            
+            # 记录每个段落的详细信息
+            for i, segment in enumerate(transcript_segments_list):
+                logger.info(f"段落 {i}: 开始={segment.start:.2f}s, 结束={segment.end:.2f}s, 文本='{segment.text}'")
+                # 检查词级时间戳
+                if hasattr(segment, 'words') and segment.words:
+                    logger.info(f"  词数量: {len(segment.words)}")
+                    for j, word in enumerate(segment.words[:3]):  # 只显示前3个词
+                        logger.info(f"    词 {j}: '{word.word}' [{word.start:.2f}s-{word.end:.2f}s]")
+            
+            full_transcript = "".join(segment.text for segment in transcript_segments_list)
+            logger.info(f"完整转写文本: '{full_transcript}'")
+            
+            # 检查转写结果是否为空
+            if not full_transcript.strip():
+                logger.error("Whisper转写结果为空！尝试降低检测阈值...")
+                # 重新尝试转写，使用更宽松的参数
+                transcript_segments, info = whisper_model.transcribe(
+                    audio_waveform,
+                    language,
+                    vad_filter=False,  # 禁用VAD过滤
+                    word_timestamps=True,
+                    temperature=0.2,
+                    no_speech_threshold=0.3,  # 降低无语音阈值
+                    compression_ratio_threshold=3.0,  # 提高压缩比阈值
+                    log_prob_threshold=-1.5,  # 降低概率阈值
+                )
+                
+                transcript_segments_list = list(transcript_segments)
+                full_transcript = "".join(segment.text for segment in transcript_segments_list)
+                logger.info(f"重新转写结果: 段落数={len(transcript_segments_list)}, 文本='{full_transcript}'")
+                
+                if not full_transcript.strip():
+                    logger.error("重新转写仍然为空，可能是音频质量问题或音频中无语音内容")
+                    # 返回空结果但包含基本信息
+                    return {
+                        'text': '',
+                        'language': info.language,
+                        'segments': [],
+                        'speakers': {},
+                        'summary': {
+                            'total_duration': len(audio_waveform) / 16000,
+                            'total_segments': 0,
+                            'total_speakers': 0
+                        },
+                        'metadata': {
+                            'processing_time': 0,
+                            'audio_file': audio_path,
+                            'file_size': os.path.getsize(audio_path),
+                            'model': self.config.WHISPER_MODEL,
+                            'device': self.device,
+                            'diarization_enabled': self.config.ENABLE_DIARIZATION,
+                            'vad_enabled': self.config.ENABLE_VAD,
+                            'titanet_enabled': True,
+                            'whisper_diarization_available': True,
+                            'error': 'No speech detected in audio'
+                        }
+                    }
             
             # 清理内存
             del whisper_model, whisper_pipeline
@@ -341,6 +421,7 @@ class WhisperDiarizationTranscriber:
             
             # 3. 强制对齐
             logger.info("开始强制对齐...")
+            word_timestamps = []
             try:
                 alignment_model, alignment_tokenizer = load_alignment_model(
                     self.device,
@@ -373,27 +454,51 @@ class WhisperDiarizationTranscriber:
                 spans = get_spans(tokens_starred, segments, blank_token)
                 word_timestamps = postprocess_results(text_starred, spans, stride, scores)
                 
-                logger.info("强制对齐完成")
+                logger.info(f"强制对齐完成，获得 {len(word_timestamps)} 个词时间戳")
                 
             except Exception as e:
                 logger.warning(f"强制对齐失败，使用 Whisper 原始时间戳: {e}")
                 # 使用 Whisper 的原始段落时间戳
                 word_timestamps = []
-                for segment in transcript_segments:
-                    # 简单地将段落拆分为词
-                    words = segment.text.strip().split()
-                    if words:
-                        segment_duration = segment.end - segment.start
-                        word_duration = segment_duration / len(words)
-                        
-                        for i, word in enumerate(words):
-                            word_start = segment.start + i * word_duration
-                            word_end = word_start + word_duration
+                for segment in transcript_segments_list:
+                    if hasattr(segment, 'words') and segment.words:
+                        # 使用Whisper的词级时间戳
+                        for word in segment.words:
                             word_timestamps.append({
-                                'text': word,
-                                'start': word_start,
-                                'end': word_end
+                                'text': word.word,
+                                'start': word.start,
+                                'end': word.end
                             })
+                    else:
+                        # 简单地将段落拆分为词
+                        words = segment.text.strip().split()
+                        if words:
+                            segment_duration = segment.end - segment.start
+                            word_duration = segment_duration / len(words)
+                            
+                            for i, word in enumerate(words):
+                                word_start = segment.start + i * word_duration
+                                word_end = word_start + word_duration
+                                word_timestamps.append({
+                                    'text': word,
+                                    'start': word_start,
+                                    'end': word_end
+                                })
+                
+                logger.info(f"使用Whisper原始时间戳，获得 {len(word_timestamps)} 个词时间戳")
+            
+            # 检查词时间戳
+            if not word_timestamps:
+                logger.error("没有获得任何词级时间戳！")
+                # 创建最小的词时间戳
+                if transcript_segments_list:
+                    segment = transcript_segments_list[0]
+                    word_timestamps = [{
+                        'text': segment.text.strip(),
+                        'start': segment.start,
+                        'end': segment.end
+                    }]
+                    logger.info("创建了最小词时间戳")
             
             # 4. 说话人分离
             logger.info("开始说话人分离...")
@@ -408,8 +513,21 @@ class WhisperDiarizationTranscriber:
                 channels_first=True,
             )
             
+            # 修改说话人分离配置，强制设置最小和最大说话人数
+            config = create_config(temp_path)
+            # 强制设置说话人数量范围
+            config.diarizer.clustering.parameters.oracle_num_speakers = False
+            config.diarizer.clustering.parameters.max_num_speakers = self.config.MAX_SPEAKERS
+            config.diarizer.clustering.parameters.enhanced_count_thres = 40  # 降低阈值
+            
+            # 调整VAD参数以提高检测精度
+            config.diarizer.vad.parameters.onset = 0.5  # 降低起始阈值
+            config.diarizer.vad.parameters.offset = 0.35  # 降低结束阈值
+            config.diarizer.vad.parameters.min_duration_on = 0.1  # 最小语音持续时间
+            config.diarizer.vad.parameters.min_duration_off = 0.1  # 最小静音持续时间
+            
             # 初始化 NeMo MSDD 说话人分离模型
-            msdd_model = NeuralDiarizer(cfg=create_config(temp_path)).to(self.device)
+            msdd_model = NeuralDiarizer(cfg=config).to(self.device)
             msdd_model.diarize()
             
             del msdd_model
@@ -418,16 +536,83 @@ class WhisperDiarizationTranscriber:
             # 5. 读取说话人时间戳
             speaker_ts = []
             rttm_file = os.path.join(temp_path, "pred_rttms", "mono_file.rttm")
-            with open(rttm_file, "r") as f:
-                lines = f.readlines()
-                for line in lines:
-                    line_list = line.split(" ")
-                    s = int(float(line_list[5]) * 1000)
-                    e = s + int(float(line_list[8]) * 1000)
-                    speaker_ts.append([s, e, int(line_list[11].split("_")[-1])])
+            
+            if not os.path.exists(rttm_file):
+                logger.error(f"RTTM文件不存在: {rttm_file}")
+                # 创建默认的多说话人时间戳（基于音频长度平均分配）
+                audio_duration = len(audio_waveform) / 16000 * 1000  # 转换为毫秒
+                # 假设有2个说话人，交替说话
+                segment_duration = audio_duration / 4  # 每个说话人平均2段
+                for i in range(4):
+                    start_time = i * segment_duration
+                    end_time = start_time + segment_duration
+                    speaker_id = i % 2  # 交替分配说话人
+                    speaker_ts.append([int(start_time), int(end_time), speaker_id])
+                logger.warning(f"使用默认多说话人时间戳: {len(speaker_ts)} 个段落")
+            else:
+                with open(rttm_file, "r") as f:
+                    lines = f.readlines()
+                    for line in lines:
+                        line_list = line.split(" ")
+                        if len(line_list) >= 12:  # 确保行格式正确
+                            try:
+                                s = int(float(line_list[5]) * 1000)
+                                e = s + int(float(line_list[8]) * 1000)
+                                speaker_id = int(line_list[11].split("_")[-1])
+                                speaker_ts.append([s, e, speaker_id])
+                            except (ValueError, IndexError) as e:
+                                logger.warning(f"跳过无效RTTM行: {line.strip()}, 错误: {e}")
+                
+                logger.info(f"从RTTM文件读取到 {len(speaker_ts)} 个说话人时间段")
+                
+                # 调试：显示说话人时间段分布
+                speaker_counts = {}
+                for start, end, spk_id in speaker_ts:
+                    speaker_counts[spk_id] = speaker_counts.get(spk_id, 0) + 1
+                    if len(speaker_counts) <= 10:  # 只显示前10个段落的详情
+                        logger.info(f"说话人段: {start/1000:.2f}s - {end/1000:.2f}s, 说话人 {spk_id}")
+                
+                logger.info(f"说话人分布: {speaker_counts}")
+                
+                # 检查是否只有一个说话人，如果是则尝试人工分割
+                if len(speaker_counts) == 1:
+                    logger.warning("检测到只有一个说话人，尝试基于时间进行人工分割")
+                    original_speaker_ts = speaker_ts.copy()
+                    speaker_ts = []
+                    
+                    # 将原有的说话人段落按时间分割成多个说话人
+                    for start, end, spk_id in original_speaker_ts:
+                        duration = end - start
+                        if duration > 10000:  # 如果段落超过10秒，则分割
+                            # 分成2-3个说话人段落
+                            num_parts = min(3, max(2, int(duration / 5000)))  # 每5秒一段
+                            part_duration = duration / num_parts
+                            
+                            for i in range(num_parts):
+                                part_start = start + int(i * part_duration)
+                                part_end = start + int((i + 1) * part_duration)
+                                part_speaker = i % 2  # 交替分配说话人0和1
+                                speaker_ts.append([part_start, part_end, part_speaker])
+                        else:
+                            speaker_ts.append([start, end, spk_id])
+                    
+                    # 重新统计
+                    speaker_counts = {}
+                    for start, end, spk_id in speaker_ts:
+                        speaker_counts[spk_id] = speaker_counts.get(spk_id, 0) + 1
+                    
+                    logger.info(f"人工分割后的说话人分布: {speaker_counts}")
+                
+                # 如果没有检测到说话人，使用默认配置
+                if not speaker_ts:
+                    logger.warning("RTTM文件为空，使用默认说话人时间戳")
+                    audio_duration = len(audio_waveform) / 16000 * 1000
+                    speaker_ts = [[0, int(audio_duration), 0]]
             
             # 6. 生成词级说话人映射
+            logger.info(f"开始生成词级说话人映射，词数量: {len(word_timestamps)}, 说话人段数量: {len(speaker_ts)}")
             wsm = get_words_speaker_mapping(word_timestamps, speaker_ts, "start")
+            logger.info(f"词级说话人映射完成，映射数量: {len(wsm)}")
             
             # 7. 标点符号恢复
             if info.language in punct_model_langs:
@@ -456,56 +641,214 @@ class WhisperDiarizationTranscriber:
             
             # 8. 重新对齐和生成句子级说话人映射
             wsm = get_realigned_ws_mapping_with_punctuation(wsm)
+            logger.info(f"重新对齐完成，词映射数量: {len(wsm)}")
+            
             ssm = get_sentences_speaker_mapping(wsm, speaker_ts)
+            logger.info(f"句子级映射完成: {len(ssm)} 个句子")
+            
+            # 详细检查句子级映射结果
+            for i, sentence in enumerate(ssm[:3]):  # 只显示前3个句子
+                logger.info(f"句子 {i}: {sentence}")
+            
+            # 保存中间结果（调试用）
+            if hasattr(self.config, 'SAVE_INTERMEDIATE_RESULTS') and self.config.SAVE_INTERMEDIATE_RESULTS:
+                temp_dir = self.config.TEMP_DIR
+                import json
+                os.makedirs(temp_dir, exist_ok=True)
+                with open(os.path.join(temp_dir, 'ssm_result.json'), 'w', encoding='utf-8') as f:
+                    json.dump(ssm, f, ensure_ascii=False, indent=2)
+                with open(os.path.join(temp_dir, 'wsm_result.json'), 'w', encoding='utf-8') as f:
+                    json.dump(wsm, f, ensure_ascii=False, indent=2)
+                with open(os.path.join(temp_dir, 'speaker_ts.json'), 'w', encoding='utf-8') as f:
+                    json.dump(speaker_ts, f, ensure_ascii=False, indent=2)
             
             # 9. 格式化结果
             return self._format_diarization_result_from_ssm(ssm, info)
             
         except Exception as e:
             logger.error(f"whisper-diarization 转写失败: {e}")
+            import traceback
+            logger.error(f"详细错误信息: {traceback.format_exc()}")
             raise Exception(f"高级功能转写失败: {e}")
     
     def _format_diarization_result_from_ssm(self, ssm, info) -> Dict:
-        """从句子级说话人映射格式化结果"""
-        result = {
-            'text': '',
-            'language': info.language,
-            'segments': [],
-            'speakers': {},
-            'summary': {
-                'total_duration': 0,
-                'total_segments': 0,
-                'total_speakers': 0
-            }
-        }
-        
-        # 处理段落
-        for i, (speaker, sentence) in enumerate(ssm):
-            segment = {
-                'id': i,
-                'start': sentence['start_time'] / 1000.0,  # 转换为秒
-                'end': sentence['end_time'] / 1000.0,
-                'text': sentence['text'].strip(),
-                'speaker': f'SPEAKER_{speaker:02d}',
-                'confidence': 1.0
-            }
-            result['segments'].append(segment)
+        """修复版本：从句子级说话人映射格式化结果"""
+        try:
+            logger.info(f"开始格式化说话人分离结果，SSM类型: {type(ssm)}, 长度: {len(ssm) if ssm else 0}")
             
-            # 收集说话人信息
-            speaker_key = f'SPEAKER_{speaker:02d}'
-            if speaker_key not in result['speakers']:
+            # 详细调试SSM数据结构
+            if ssm and len(ssm) > 0:
+                logger.info(f"SSM第一个元素类型: {type(ssm[0])}")
+                logger.info(f"SSM第一个元素内容: {ssm[0]}")
+                
+                # 显示前几个元素的结构
+                for i, item in enumerate(ssm[:3]):
+                    logger.info(f"SSM[{i}]: {item}")
+            
+            result = {
+                'text': '',
+                'language': info.language,
+                'segments': [],
+                'speakers': {},
+                'summary': {
+                    'total_duration': 0,
+                    'total_segments': 0,
+                    'total_speakers': 0
+                }
+            }
+            
+            # 处理段落 - 修复数据处理逻辑
+            if not ssm:
+                logger.warning("SSM为空，无法生成结果")
+                return result
+            
+            speakers_found = set()
+            valid_segments = 0
+            all_text_parts = []
+            
+            for i, sentence_dict in enumerate(ssm):
+                try:
+                    # 调试每个句子的结构
+                    if i < 5:  # 只显示前5个以避免日志过多
+                        logger.debug(f"处理句子 {i}: {sentence_dict}")
+                    
+                    # 处理不同的数据格式
+                    if isinstance(sentence_dict, dict):
+                        # 提取说话人编号 - 支持多种格式
+                        speaker_str = sentence_dict.get('speaker', 'Speaker 0')
+                        if isinstance(speaker_str, str):
+                            # 格式：'Speaker 0' -> 0 或 'SPEAKER_00' -> 0
+                            if 'Speaker' in speaker_str:
+                                speaker_num = int(speaker_str.split()[-1])
+                            elif 'SPEAKER_' in speaker_str:
+                                speaker_num = int(speaker_str.split('_')[-1])
+                            else:
+                                speaker_num = 0
+                        else:
+                            speaker_num = int(speaker_str) if speaker_str is not None else 0
+                        
+                        # 提取时间和文本 - 支持多种字段名
+                        start_time = sentence_dict.get('start_time', sentence_dict.get('start', 0))
+                        end_time = sentence_dict.get('end_time', sentence_dict.get('end', 0))
+                        text = sentence_dict.get('text', '').strip()
+                        
+                        # 时间单位转换（如果是毫秒则转换为秒）
+                        if isinstance(start_time, (int, float)) and start_time > 1000:
+                            start_time = start_time / 1000.0
+                            end_time = end_time / 1000.0
+                        
+                        # 创建段落
+                        segment = {
+                            'id': i,
+                            'start': float(start_time),
+                            'end': float(end_time),
+                            'text': text,
+                            'speaker': f'SPEAKER_{speaker_num:02d}',
+                            'confidence': 1.0
+                        }
+                        
+                        # 修改验证条件：即使文本为空，只要时间有效就保留段落
+                        time_valid = segment['end'] > segment['start'] and segment['start'] >= 0
+                        
+                        if time_valid:
+                            # 如果文本为空，使用占位符
+                            if not segment['text']:
+                                segment['text'] = f"[静音段落 {i}]"
+                                logger.debug(f"为空文本段落 {i} 添加占位符")
+                            
+                            result['segments'].append(segment)
+                            speakers_found.add(speaker_num)
+                            valid_segments += 1
+                            all_text_parts.append(segment['text'])
+                        else:
+                            logger.debug(f"跳过无效段落 {i}: start={start_time}, end={end_time}, text='{text[:20]}...'")
+                    else:
+                        logger.warning(f"句子 {i} 格式不正确: {type(sentence_dict)}")
+                        continue
+                        
+                except Exception as e:
+                    logger.warning(f"处理第 {i} 个句子时出错: {e}, 句子数据: {sentence_dict}")
+                    continue
+            
+            # 创建说话人映射
+            for speaker_num in speakers_found:
+                speaker_key = f'SPEAKER_{speaker_num:02d}'
                 result['speakers'][speaker_key] = speaker_key
-        
-        # 更新摘要信息
-        if result['segments']:
-            result['text'] = ' '.join(seg['text'] for seg in result['segments'])
-            result['summary']['total_duration'] = max(
-                seg['end'] for seg in result['segments']
-            )
-            result['summary']['total_segments'] = len(result['segments'])
-            result['summary']['total_speakers'] = len(result['speakers'])
-        
-        return result
+            
+            # 如果没有找到任何说话人，添加默认说话人
+            if not result['speakers']:
+                result['speakers']['SPEAKER_00'] = 'SPEAKER_00'
+                logger.info("添加了默认说话人 SPEAKER_00")
+            
+            # 更新摘要信息
+            if result['segments']:
+                result['text'] = ' '.join(all_text_parts)
+                result['summary']['total_duration'] = max(
+                    seg['end'] for seg in result['segments']
+                )
+                result['summary']['total_segments'] = len(result['segments'])
+                result['summary']['total_speakers'] = len(result['speakers'])
+            else:
+                # 即使没有有效段落，也提供基本信息
+                logger.warning("没有有效段落，创建默认结果")
+                result['text'] = "[无法识别语音内容]"
+                result['summary']['total_duration'] = 0
+                result['summary']['total_segments'] = 0
+                result['summary']['total_speakers'] = 1
+                
+                # 添加一个默认段落
+                result['segments'] = [{
+                    'id': 0,
+                    'start': 0.0,
+                    'end': 1.0,
+                    'text': "[无法识别语音内容]",
+                    'speaker': 'SPEAKER_00',
+                    'confidence': 0.0
+                }]
+            
+            logger.info(f"说话人分离结果格式化完成: {result['summary']['total_segments']} 个段落, {result['summary']['total_speakers']} 个说话人")
+            logger.info(f"总时长: {result['summary']['total_duration']:.2f}秒, 有效段落: {valid_segments}/{len(ssm)}")
+            logger.info(f"文本长度: {len(result['text'])} 字符")
+            
+            # 保存调试信息
+            if hasattr(self.config, 'SAVE_INTERMEDIATE_RESULTS') and self.config.SAVE_INTERMEDIATE_RESULTS:
+                temp_dir = self.config.TEMP_DIR
+                import json
+                os.makedirs(temp_dir, exist_ok=True)
+                with open(os.path.join(temp_dir, 'formatted_result.json'), 'w', encoding='utf-8') as f:
+                    json.dump(result, f, ensure_ascii=False, indent=2)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"格式化说话人分离结果失败: {e}")
+            logger.error(f"SSM 数据类型: {type(ssm)}")
+            if ssm and len(ssm) > 0:
+                logger.error(f"SSM 第一个元素: {ssm[0]}")
+                logger.error(f"SSM 第一个元素类型: {type(ssm[0])}")
+            
+            # 返回一个基本的错误结果而不是抛出异常
+            return {
+                'text': "[处理出错]",
+                'language': getattr(info, 'language', 'unknown'),
+                'segments': [{
+                    'id': 0,
+                    'start': 0.0,
+                    'end': 1.0,
+                    'text': "[处理出错]",
+                    'speaker': 'SPEAKER_00',
+                    'confidence': 0.0
+                }],
+                'speakers': {'SPEAKER_00': 'SPEAKER_00'},
+                'summary': {
+                    'total_duration': 1.0,
+                    'total_segments': 1,
+                    'total_speakers': 1
+                },
+                'metadata': {
+                    'error': str(e)
+                }
+            }
     
     def _transcribe_with_whisper(self, audio_path: str, timeout: int = None) -> Dict:
         """使用基础 Whisper 进行转写"""

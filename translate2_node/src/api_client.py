@@ -146,7 +146,7 @@ class APIClient:
         """
         return self._send_callback({
             'task_id': task_id,
-            'task_type': 2,  # 转写任务类型
+            'task_type': 4,  # 文本转写任务类型 (TASK_TYPE_TEXT_CONVERT)
             'status': 'processing',
             'message': '音频转写处理中...'
         })
@@ -164,7 +164,7 @@ class APIClient:
         """
         return self._send_callback({
             'task_id': task_id,
-            'task_type': 2,  # 转写任务类型
+            'task_type': 4,  # 文本转写任务类型 (TASK_TYPE_TEXT_CONVERT)
             'status': 'success',
             'message': '音频转写完成',
             'data': result
@@ -183,7 +183,7 @@ class APIClient:
         """
         return self._send_callback({
             'task_id': task_id,
-            'task_type': 2,  # 转写任务类型
+            'task_type': 4,  # 文本转写任务类型 (TASK_TYPE_TEXT_CONVERT)
             'status': 'failed',
             'message': error_message
         })

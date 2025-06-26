@@ -152,8 +152,14 @@ class QueueConsumer:
                     timeout=self.config.PROCESSING_TIMEOUT
                 )
                 
+                # 格式化回调数据以匹配后端期望的格式
+                callback_data = {
+                    'language': transcribe_result.get('language', 'zh'),
+                    'text_info': transcribe_result  # 将完整的转写结果作为text_info
+                }
+                
                 # 发送成功回调
-                self.api_client.send_success_callback(task_id, transcribe_result)
+                self.api_client.send_success_callback(task_id, callback_data)
                 
                 # 记录处理成功
                 process_time = time.time() - start_time
