@@ -107,14 +107,24 @@ class QueueController
                     $taskInfo->save();
                     return ['id' => $taskInfo->id, 'status' => 'success', 'msg' => '已推送到快速识别队列'];
                 case 4: // transcribe
+                    // 1. 正在转写中，禁止重复提交
                     if ($taskInfo->step == QueueConstants::STEP_TRANSCRIBING) {
                         return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '正在转写，请勿重复提交'];
-                     }
-                    //已经降噪了 也转写了
-                    if ($taskInfo->is_clear == QueueConstants::STATUS_YES && $taskInfo->transcribe_status == QueueConstants::STATUS_YES) {
-                        return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '已降噪并转写，请勿重复提交'];
                     }
-
+                    
+                    // 2. 已转写完成的文件，根据降噪状态判断是否允许重新转写
+                    if ($taskInfo->transcribe_status == QueueConstants::STATUS_YES) {
+                        // 如果是已降噪文件且已完成转写，不允许重复提交
+                        if ($taskInfo->is_clear == QueueConstants::STATUS_YES && $taskInfo->step == QueueConstants::STEP_ALL_COMPLETED) {
+                            return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '已降噪文件已完成转写，请勿重复提交'];
+                        }
+                        // 如果是未降噪文件且已完成转写，检查当前是否已降噪
+                        if ($taskInfo->is_clear == QueueConstants::STATUS_NO && $taskInfo->step == QueueConstants::STEP_UNCLEAR_TRANSCRIBE) {
+                            return ['id' => $taskInfo->id, 'status' => 'failed', 'msg' => '未降噪文件已完成转写，请勿重复提交'];
+                        }
+                        // 如果是未降噪转写过的文件，但现在已降噪，允许重新转写（降噪后音质更好）
+                    }
+                   
                     $rabbitMQ->publishMessage(QueueConstants::QUEUE_TRANSCRIBE, [
                         'task_info' => $taskInfo->toArray()
                     ]);
