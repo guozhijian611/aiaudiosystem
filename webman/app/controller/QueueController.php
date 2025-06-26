@@ -155,6 +155,9 @@ class QueueController
         if (empty($taskId) || empty($taskType) || empty($status)) {
             return jsons(400, '缺少必要参数');
         }
+        // 详细的回调日志
+        error_log("收到回调 - 任务ID: {$taskId}, 任务类型: {$taskType}, 状态: {$status}, 消息: {$message}");
+        
         $aiLog = new AiLog();
         $aiLog->task_id = $taskId;
         $aiLog->task_type = $taskType;
@@ -166,7 +169,14 @@ class QueueController
             if (!$taskInfo) {
                 return jsons(400, '任务不存在');
             }
-            if ($status === 'success') {
+            
+            error_log("回调前文件状态 - 任务ID: {$taskId}, 文件ID: {$taskInfo->id}, 当前step: {$taskInfo->step}");
+            
+            if ($status === 'processing') {
+                // 处理中状态，不更新文件状态，只记录日志
+                error_log("处理中状态回调 - 任务ID: {$taskId}, 文件ID: {$taskInfo->id}, 保持当前step: {$taskInfo->step}");
+                return jsons(200, '处理中状态已记录');
+            } elseif ($status === 'success') {
             switch ($taskType) {
                 case QueueConstants::TASK_TYPE_EXTRACT:
                     $taskInfo->is_extract = QueueConstants::STATUS_YES;
@@ -196,10 +206,17 @@ class QueueController
                     break;
             }
             $taskInfo->error_msg = '';
+            error_log("成功回调处理完成 - 任务ID: {$taskId}, 文件ID: {$taskInfo->id}, 新step: {$taskInfo->step}");
+        } elseif (in_array($status, ['failed', 'error', 'fail'])) {
+            // 明确的失败状态
+            error_log("失败回调处理 - 任务ID: {$taskId}, 文件ID: {$taskInfo->id}, 失败状态: {$status}, 失败原因: {$message}, 将设置step为失败(9)");
+            $taskInfo->error_msg = $message;
+            $taskInfo->retry_count += 1;
+            $taskInfo->step = QueueConstants::STEP_FAILED;
         } else {
-        $taskInfo->error_msg = $message;
-        $taskInfo->retry_count += 1;
-        $taskInfo->step = QueueConstants::STEP_FAILED;
+            // 未知状态，记录日志但不更新文件状态
+            error_log("未知状态回调 - 任务ID: {$taskId}, 文件ID: {$taskInfo->id}, 未知状态: {$status}, 消息: {$message}, 不更新文件状态");
+            return jsons(200, '未知状态已记录，未更新文件状态');
         }
 
             $taskInfo->save();
@@ -252,35 +269,48 @@ class QueueController
                 if (in_array($taskInfo->step, $processingSteps)) {
                     $processingFiles++;
                 }
+                
+                // 调试日志：记录每个文件的状态
+                error_log("文件状态详情 - 任务ID: {$taskId}, 文件ID: {$taskInfo->id}, step: {$taskInfo->step}, fast_status: {$taskInfo->fast_status}, transcribe_status: {$taskInfo->transcribe_status}, is_clear: {$taskInfo->is_clear}");
             }
 
             // 根据完成情况确定任务状态
             $newStatus = QueueConstants::TASK_STATUS_EMPTY; // 默认空任务状态
+            $statusReason = '默认空任务状态';
             
             if ($processingFiles > 0) {
                 // 有文件正在处理中或等待处理
                 $newStatus = QueueConstants::TASK_STATUS_PROCESSING; // 处理中
+                $statusReason = '有文件正在处理中或等待处理';
             } elseif ($transcribedFiles == $totalFiles) {
                 // 所有文件都已转写完成
                 $newStatus = QueueConstants::TASK_STATUS_CONVERTED; // 已转写
+                $statusReason = '所有文件都已转写完成';
             } elseif ($detectedFiles == $totalFiles) {
                 // 所有文件都已检测完成但未全部转写
                 $newStatus = QueueConstants::TASK_STATUS_CHECKED; // 已检测
+                $statusReason = '所有文件都已检测完成但未全部转写';
             } elseif ($detectedFiles > 0 || $transcribedFiles > 0) {
                 // 部分文件已处理
                 $newStatus = QueueConstants::TASK_STATUS_CHECKED; // 已检测
+                $statusReason = '部分文件已处理';
             } else {
                 // 所有文件都还没有开始处理
                 $newStatus = QueueConstants::TASK_STATUS_EMPTY; // 空任务
+                $statusReason = '所有文件都还没有开始处理';
             }
+            
+            // 调试日志：记录状态判断过程
+            error_log("状态判断逻辑 - 任务ID: {$taskId}, 判断原因: {$statusReason}, 计算出的新状态: {$newStatus}");
 
             // 更新任务状态
             $task = Task::find($taskId);
             if ($task && $task->status != $newStatus) {
+                $oldStatus = $task->status; // 保存旧状态用于日志
                 $task->status = $newStatus;
                 $task->save();
                 
-                error_log("任务状态已更新 - 任务ID: {$taskId}, 旧状态: {$task->status}, 新状态: {$newStatus}, 总文件: {$totalFiles}, 已检测: {$detectedFiles}, 已转写: {$transcribedFiles}, 处理中: {$processingFiles}");
+                error_log("任务状态已更新 - 任务ID: {$taskId}, 旧状态: {$oldStatus}, 新状态: {$newStatus}, 总文件: {$totalFiles}, 已检测: {$detectedFiles}, 已转写: {$transcribedFiles}, 处理中: {$processingFiles}");
             }
             
         } catch (\Exception $e) {
