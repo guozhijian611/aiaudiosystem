@@ -29,7 +29,7 @@
     "monolog/monolog": "^2.0",
     "saithink/saiadmin": "^5.0",
     "webman/console": "^2.1",
-    "guozhijian611/thinkorm-log": "dev-main"
+    "openb8/webman-trace": "dev-main"
   },
   "suggest": {
     "ext-event": "For better performance. "
