@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "dd7c37f4bbaf7bfac9709cb56ea66569",
+    "content-hash": "c07942c25d0b1ab22bb0d78671e1c135",
     "packages": [
         {
             "name": "brick/math",
@@ -417,63 +417,6 @@
                 }
             ],
             "time": "2024-07-20T21:45:45+00:00"
-        },
-        {
-            "name": "guozhijian611/thinkorm-log",
-            "version": "dev-main",
-            "dist": {
-                "type": "path",
-                "url": "/Volumes/project/webman-api-logs",
-                "reference": "2df645cbf10fa0103725fb7b6af673e4c62b8e93"
-            },
-            "require": {
-                "monolog/monolog": "^2.0|^3.0",
-                "php": ">=8.0",
-                "topthink/think-orm": "^2.0|^3.0",
-                "workerman/webman-framework": "^1.0|^2.0"
-            },
-            "type": "library",
-            "extra": {
-                "webman": {
-                    "plugin": true
-                }
-            },
-            "autoload": {
-                "psr-4": {
-                    "Guozhijian611\\ThinkOrmLog\\": "src/"
-                }
-            },
-            "scripts": {
-                "post-package-install": [
-                    "Guozhijian611\\ThinkOrmLog\\Install::install"
-                ],
-                "post-package-update": [
-                    "Guozhijian611\\ThinkOrmLog\\Install::update"
-                ],
-                "pre-package-uninstall": [
-                    "Guozhijian611\\ThinkOrmLog\\Install::uninstall"
-                ]
-            },
-            "license": [
-                "MIT"
-            ],
-            "authors": [
-                {
-                    "name": "guozhijian611",
-                    "email": "allen@gzj2001.com"
-                }
-            ],
-            "description": "基于webman开发的ThinkOrm日志记录插件，增强版支持API请求日志记录",
-            "keywords": [
-                "api",
-                "log",
-                "middleware",
-                "thinkorm",
-                "webman"
-            ],
-            "transport-options": {
-                "relative": false
-            }
         },
         {
             "name": "guzzlehttp/guzzle",
@@ -1385,6 +1328,52 @@
                 "source": "https://github.com/nikic/FastRoute/tree/master"
             },
             "time": "2018-02-13T20:26:39+00:00"
+        },
+        {
+            "name": "openb8/webman-trace",
+            "version": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "https://cnb.cool/OpenB8/webman-trace",
+                "reference": "795ae9392526a629cb62d417ff9c61061569a442"
+            },
+            "require": {
+                "php": ">=8.0",
+                "workerman/webman-framework": "^1.0 || ^2.0"
+            },
+            "default-branch": true,
+            "type": "library",
+            "extra": {
+                "webman": {
+                    "config": "config/plugin"
+                }
+            },
+            "autoload": {
+                "files": [
+                    "src/helpers.php"
+                ],
+                "psr-4": {
+                    "OpenB8\\WebmanTrace\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "OpenB8",
+                    "email": "allen@openb8.com"
+                }
+            ],
+            "description": "A request trace plugin for Webman framework",
+            "keywords": [
+                "logging",
+                "middleware",
+                "trace",
+                "webman"
+            ],
+            "time": "2025-06-30T22:45:49+00:00"
         },
         {
             "name": "openspout/openspout",
@@ -4700,7 +4689,7 @@
     "aliases": [],
     "minimum-stability": "dev",
     "stability-flags": {
-        "guozhijian611/thinkorm-log": 20
+        "openb8/webman-trace": 20
     },
     "prefer-stable": true,
     "prefer-lowest": false,
